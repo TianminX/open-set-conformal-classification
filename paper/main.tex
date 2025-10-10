@@ -1,0 +1,631 @@
+\documentclass[11pt]{article}
+\usepackage[utf8]{inputenc}
+
+\usepackage[margin=1in]{geometry}
+
+\usepackage[
+    backend=biber,
+    style=numeric-comp,
+    sortcites,
+    sorting=none,
+    %sorting=nty,
+    giveninits=true,
+    natbib,
+    hyperref=true,
+    maxbibnames=99,
+    doi=false,isbn=false,url=false,eprint=false
+]{biblatex}
+
+\addbibresource{ref.bib}
+
+\usepackage{placeins}
+
+\usepackage{parskip}
+
+\usepackage{xargs}
+\setlength{\marginparwidth}{2.2cm}
+\usepackage[colorinlistoftodos,prependcaption,textsize=tiny]{todonotes}
+\newcommandx{\note}[2][1=]{\todo[linecolor=blue,backgroundcolor=blue!25,bordercolor=blue,#1]{#2}}
+
+
+\usepackage[ruled,linesnumbered]{algorithm2e}
+
+\usepackage{xcolor}
+\usepackage{graphicx,amsfonts,amsthm,amssymb}
+\usepackage[hidelinks]{hyperref}
+\usepackage{amsmath,mathrsfs}
+
+\newtheorem{proposition}{Proposition}
+
+\usepackage{cleveref}
+
+\renewcommand{\P}[1]{\mathbb{P}\left[#1\right]}
+\newcommand{\E}[1]{\mathbb{E}\left[#1\right]}
+\newcommand{\I}[1]{\mathbb{I}\left[#1\right]}
+
+\usepackage{setspace}
+\usepackage[colorinlistoftodos]{todonotes}
+\newcommand{\todomatteo}[2][1=]{\todo[linecolor=orange,backgroundcolor=orange!25,bordercolor=orange,#1]{{\begin{spacing}{1}\tiny #2\end{spacing}}}}
+\newcommand{\todocora}[2][1=]{\todo[linecolor=pink,backgroundcolor=pink!25,bordercolor=pink,#1]{\begin{spacing}{1}\tiny For Cora: #2\end{spacing}}}
+\newcommand{\todotianmin}[2][1=]{\todo[linecolor=green,backgroundcolor=green!25,bordercolor=green,#1]{{\begin{spacing}{1}\tiny For Tianmin: #2\end{spacing}}}}
+\newcommand{\matteo}[2][1=]{\todo[linecolor=orange,backgroundcolor=orange!25,bordercolor=orange,#1]{{\begin{spacing}{1}\tiny Matteo's comment: #2\end{spacing}}}}
+\newcommand{\tianmin}[2][1=]{\todo[linecolor=green,backgroundcolor=green!25,bordercolor=green,#1]{{\begin{spacing}{1}\tiny Tianmin's comment: #2\end{spacing}}}}
+\newcommand{\cora}[2][1=]{\todo[linecolor=pink,backgroundcolor=pink!25,bordercolor=pink,#1]{{\begin{spacing}{1}\tiny Cora's comment: #2\end{spacing}}}}
+
+\addbibresource{ref.bib}
+
+\title{Conformal Classification with Unknown Label Spaces}
+\author{Matteo Sesia and Stefano Favaro}
+\date{\today}
+
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+  This paper addresses the problem constructing provably valid and informative prediction sets for classification problems in which the label space is unknown and possibly also infinite. Our solution connects conformal inference to the classical missing mass problem. To streamline the exposition, the introduction of the paper starts from a predictive perspective (after all, we're proposing a conformal {\em prediction} solution). Then, the connections to the classical missing mass literature are explained through suitable discussions.
+\end{abstract}
+
+\section{Introduction}
+
+\subsection{Notation and Modeling Assumptions}
+
+For any $i \in [n+1]$, consider a paired data point $Z_i=(X_i, Y_i)$, where $X_i$ denotes a vector of features taking values in some (possibly high-dimensional) space $\mathcal{X}$ and $Y_i$ is a discrete (``species'') label, taking values in an infinite dictionary $\mathcal{Y}$. 
+In the context of language models, one might imagine that $X_i$ is a ``document'' (long string of text) and $Y_i$ is a ``factoid'' associated with that document.
+Therefore, each $Z_i \in \mathcal{Z} = \mathcal{X} \times \mathcal{Y}$.
+For any vector $Z=(Z_1,\ldots,Z_{n+1})$ and integer $m \in [n+1]$, let $Z_{1:m}$ be a short-hand notation for the sub-vector $(Z_1,\ldots,Z_m)$.
+Further, let $\{Z_{1:m}\} := \{Z_1,\ldots,Z_m\}$ denote the unordered collection of values in $Z_{1:m}$.
+
+
+\textbf{A species sampling model for the factoids.}
+We assume that $Z_1,\ldots,Z_{n+1}$ are exchangeable random variables, whose distribution is characterized by the following {\em species sampling sequence} \cite{pitman2006combinatorial,hansen2000prediction,lee2013defining}:
+\begin{align} \label{eq:species-model}
+\begin{split}
+  Y_1 & \sim \nu_0(\cdot), \\
+  Y_{m+1} \mid Y_1, \ldots, Y_m & \sim \lambda_{k+1}(N_m) \nu_0(\cdot) + \sum_{j=1}^{k_m} \lambda_j(N_m) \delta_{\tilde{Y}_j}(\cdot), \\
+  X_i \mid Y_i & \overset{\text{ind.}}{\sim} P_{Y_i},
+\end{split}
+\end{align}
+for any $m \in [n] := \{1,\ldots,n\}$. Above, $k_m$ denotes the number of distinct species $\tilde{Y}_1,\ldots,\tilde{Y}_{k_m}$ observed in the sample $Y_1,\ldots,Y_m$ and $N_m := (N_{m,1}, N_{m,2}, \ldots)$ is the vector of counts of various species observed in the sample $Y_1,\ldots,Y_m$.
+Note that $\nu_0$ is a continuous distribution over the real line, $\delta_{\tilde{Y}_j}$ is a point mass on $\tilde{Y}_j$.
+The sequence of functions $(\lambda_1, \lambda_2, \ldots)$ in~\eqref{eq:species-model} is called a sequence of predictive probability functions. 
+These are defined on $\mathbb{N}^{*} = \cup_{k=1}^{\infty} \mathbb{N}^k$, where $\mathbb{N}$ is the set of natural numbers, and satisfy the conditions
+\begin{align*}
+& \lambda_j(\mathbf{n}) \geq 0,
+& \sum_{j=1}^{k_m+1} \lambda_j(\mathbf{n}) =1
+\end{align*}
+for all $j,m$ and $\mathbf{n} \in \mathbb{N}^*$.
+A relatively simple example of a species sampling sequence is the P´olya urn sequence.
+
+Note that if $Y_1, \ldots, Y_{n+1}$ are exchangeable, then $Z_1, \ldots, Z_{n+1}$ are clearly also exchangeable.
+
+
+{\color{red} Remarks:
+\begin{itemize}
+    \item Can we think of a more general model than~\eqref{eq:species-model}? One thing that I'm worried about is that the features are not informative at all about the label frequency. We can use the features to guess whether two objects have exactly the same label, but we cannot figure out whether they might have a ``similar" label (with similar frequency) based on this model.
+    One possibility is to use the following approach. First sample the labels $Y_1,\ldots,Y_{n+1}$ according to the species sampling process:
+    \begin{align*}
+  Y_1 & \sim \nu_0(\cdot), \\
+  Y_{m+1} \mid Y_1, \ldots, Y_m & \sim \lambda_{k+1}(N_m) \nu_0(\cdot) + \sum_{j=1}^{k_m} \lambda_j(N_m) \delta_{\tilde{Y}_j}(\cdot),
+\end{align*}
+Then, re-label the data so that the most frequently observed label is "1", then "2", and so on \ldots Call these new data $\tilde{Y}_1, \ldots, \tilde{Y}_{n+1}$. Note that $\tilde{Y}_1, \ldots, \tilde{Y}_{n+1}$ are still exchangeable.
+Finally, sample $X_1, \ldots, X_{n+1}$ according to:
+   \begin{align*}
+   X_i \mid \tilde{Y}_i & \overset{\text{ind.}}{\sim} P_{\tilde{Y}_i}.
+   \end{align*}
+   Now it is possible to have structure between $X$ and $\tilde{Y}$. For example, imagine $\tilde{Y}_i = N(\tilde{Y}_i,1)$. It's clear that now the features give us direct information about the label frequency! If we generate data according to this model, the features will be more useful.
+\end{itemize}
+}
+\subsection{Problem statement}
+
+Having observed $(X_1,Y_1), \ldots, (X_n,Y_n)$, we wish to construct a conformal prediction set for the unobserved label $Y_{n+1}$ of a new test point with features $X_{n+1}$.
+This problem is well-studied in the case where the space $\mathcal{Y}$ is both finite and known. What if $\mathcal{Y}$ is not known?
+Intuitively, we should output a prediction set that contains an appropriate subset of the labels in $\{Y_1,\ldots,Y_n\}$ and (if needed) a place-holder symbol $`?\textrm'$ that means we expect a new label. This set should be as small as possible (and avoid using $`?\textrm'$ unless necessary) while guaranteeing valid coverage.
+
+We will explain how to solve this problem. As a starting point, we focus in the next section on an easier hypothesis testing problem, which will provide a key building block for our method.
+
+\subsection{Practical Motivation}
+
+{\color{red}
+In what cases can we practically motivate both our goal and the model assumed in~\eqref{eq:species-model}?
+Try to come up with a convincing story, ideally with relevant references.
+
+\textbf{Possible story 1.} The data $Z_1, \ldots, Z_n, Z_{n+1}$ are being generated by an LLM. For example, the LLM generates documents (or single sentences) $X_i$ and a human assigns a discrete annotation, or label $Y_i=\varphi(X_i)$ to it, using some unknown complicated function $\varphi$. 
+The meaning label is sometimes called a ``factoid". 
+The human has already annotated the first $n$ documents and we want to predict the annotation for the next document.
+This seems like a reasonably well-defined problem. It's a bit abstract but I think there is a connection between this and hallucinations.
+Can we find relevant references and maybe better explain the connection to hallucinations?
+
+
+\textbf{Possible story 2.} The data $Z_1, \ldots, Z_n, Z_{n+1}$ are prompts given by random users (people) to an LLM.
+The first $n$ observations are ``training" data, which were already annotated by someone. The LLM wants to understand what the next prompt, $X_{n+1}$, means. It could either be similar to a previous prompt (it has the same factoid) or it could be something completely different.
+
+
+}
+
+
+\section{Hypothesis Testing}
+
+Under the model defined in~\eqref{eq:species-model}, consider the problem of testing the following null hypothesis:
+\begin{align} \label{eq:H0-species}
+  H_0 : Y_{n+1} \text{ is a new species, not observed before in } \{Y_1, \ldots, Y_n\}.
+\end{align}
+
+To make this goal more precise, define the event
+\begin{align} \label{eq:event-A}
+  A_{n+1} := Y_{n+1} \text{ is a new species, not observed before in } \{Y_1, \ldots, Y_n\}.
+\end{align}
+Then, we will construct a ``conformal p-value'' $\psi_{n+1}(Z_1, \ldots, Z_n)$, such that, for any $\alpha \in (0,1)$,
+\begin{align} \label{eq:phi-pvalue}
+  \P{\psi_{n+1}(Z_1, \ldots, Z_n) \leq \alpha, A_{n+1}} \leq \alpha.
+\end{align}
+We will explain below how to obtain $\psi_{n+1}(Z_1, \ldots, Z_n)$ in practice and why it can be interpreted as a p-value.
+
+
+\subsection{Setup} \label{sec:methods-setup}
+
+Let $f$ be any function taking as input two arguments: an unordered subset of $n$ objects $\{z_1,\ldots,z_n\}$, with each $z_i \in \mathcal{Z}$, and an object $z \in \mathcal{Z}$. In principle, this function may be random in the sense that its parametrization may depend on the unordered data in $\{Z_1,\ldots,Z_{n+1}\}$; however, this dependence will be kept implicit for now to simplify the notation. Therefore, one may imagine for the time being that $f$ is fixed.
+
+For any $j \in [n+1]$, define a function $\hat{u}_j$ of $(z_1,\ldots,z_{n+1})$ as follows:
+\begin{align} \label{eq:conformal-p-value}
+  \hat{u}_j(z_1,\ldots,z_{n+1})
+  & := \frac{1}{n+1} \sum_{i=1}^{n+1} \I{ f(\{z_{1:(n+1)}\} \setminus \{z_i\}, z_{i}) \leq f(\{z_{1:(n+1)}\} \setminus \{z_j\}, z_{j}) } .
+\end{align}
+This can be seen as a ``conformal p-value function'', as made clear by the following standard conformal inference result.
+
+
+\begin{proposition} \label{prop:super-unif}
+Suppose $Z_1,\ldots,Z_{n+1}$ are exchangeable.
+Then, for any $j \in [n+1]$ and $\alpha \in (0,1)$,
+\begin{align*}
+  \P{\hat{u}_j(Y_1, \ldots, Y_{n+1}) \leq \alpha} \leq \alpha.
+\end{align*}
+\end{proposition}
+See Appendix~\ref{app:proofs} for a proof of Proposition~\ref{prop:super-unif}.
+
+
+\subsection{A Conformal Good-Turing p-Value} \label{sec:gt-pval}
+
+We focus now on functions $f$ that ignore the $X$ features completely, for simplicity (even though this may not be the optimal approach, as discussed later).
+Therefore, with a slight abuse of notation, we will replace all $Z$ with $Y$.
+Consider the following special case for the function $f$ in~\eqref{eq:conformal-p-value}, which we call $f_0$:
+\begin{align} \label{eq:def-f0}
+  f_0(\{y_{1:(n+1)}\} \setminus \{y_i\}, y_{i})
+   := - \I{\sum_{j=1}^{n+1} \I{y_j = y_{i}}=1}.
+\end{align}
+Therefore, the function $f_0$ simply evaluates the (negative) indicator of the event that the species of $y_{i}$ never appears in $\{y_{1:(n+1)}\} \setminus \{y_i\}$.
+For ease of notation, in the following we will also write
+\begin{align*}
+  f_0(A, y)
+   := - \phi_0\left( A, y \right),
+\end{align*}
+where in general, for any $k \in \{0,1,\ldots\}$, the function $\phi_k(A, y)$ is defined as the indicator that the label $y \in \mathcal{Y}$ occurs exactly $k$ times within the set $A \subseteq \mathcal{Y}$.
+
+
+Focusing on this choice of $f$, consider the following procedure designed to test the null hypothesis that $Y_{n+1}$ is a new species.
+\begin{enumerate}
+\item Observe $Y_1, \ldots, Y_n$ from the model in~\eqref{eq:species-model}.
+\item Randomly sample $Y^* \sim \nu_0$, independently of everything else.
+\item Compute $\hat{u}_{n+1}(Y_1, \ldots, Y_n, Y^*)$ according to~\eqref{eq:conformal-p-value}, with $f=f_0$, as defined in~\eqref{eq:def-f0}.
+\end{enumerate}
+It is easy to show that this almost-surely leads to a p-value equal to
+\begin{align} \label{eq:p-value-GT}
+  \hat{u}_{n+1}(Y_1,\ldots,Y_{n},Y^*)
+  & = \frac{M_n^1+1}{n+1},
+\end{align}
+where, for any $k \in \mathbb{N}$, $M_n^k$ is the number of species appearing exactly $k$ times in $\{Y_{1:n}\}$; i.e.,
+\begin{align*}
+  M_n^k := \sum_{i=1}^{n} \phi_k (\{Y_{1:n}\}, Y_{i}\}).
+\end{align*}
+See Appendix~\ref{app:proofs} for a proof of~\eqref{eq:p-value-GT}.
+
+
+We claim that $\hat{u}_{n+1}(Y_{1:n}, Y^*)$ in~\eqref{eq:p-value-GT} can be interpreted as a ``conformal p-value'' for testing the null hypothesis that $Y_{n+1}$ is a new species.
+In particular, we know from Proposition~\ref{prop:super-unif} that the ideal ``oracle'' p-value $\hat{u}_{n+1}(Y_{1:n},Y_{n+1})$, calculated based on the ``true'' label $Y_{n+1}$ sampled from the model in~\eqref{eq:species-model}, would be super-uniform. 
+Under the null hypothesis that $Y_{n+1}$ is indeed a new species, our $\hat{u}_{n+1}(Y_{1:n}, Y^*)$ coincides with the oracle $\hat{u}_{n+1}(Y_{1:n}, Y_{n+1})$.
+Therefore, by super-uniformity, small values of $\hat{u}_{n+1}(Y_{1:n}, Y^*)$ are unlikely if $Y_{n+1}$ is a new species.
+Consequently, if we do see a small value of $\hat{u}_{n+1}(Y_1,\ldots,Y_{n},Y^*)$, it suggests that $\hat{u}_{n+1}(Y_{1:n}, Y^*) \neq \hat{u}_{n+1}(Y_{1:n}, Y_{n+1})$,  indicating evidence that $Y_{n+1}$ is not a new species.
+
+Finally, let us connect $\hat{u}_{n+1}(Y_{1:n}, Y^*)$ to our original goal of constructing a $\psi_{n+1}(Z_1, \ldots, Z_n)$ satisfying~\eqref{eq:phi-pvalue}.
+Let 
+\begin{align*}
+  \psi_{n+1}(Z_1, \ldots, Z_n) = \hat{u}_{n+1}(Y_{1:n}, Y^*)
+\end{align*}
+and note that, for any $\alpha \in (0,1)$,
+\begin{align} \label{eq:validity-pval}
+\begin{split}
+  \P{\psi_{n+1}(Z_1, \ldots, Z_n) \leq \alpha, A_{n+1}}
+  & = \P{\hat{u}_{n+1}(Y_{1:n}, Y^*)  \leq \alpha, A_{n+1}} \\
+  & = \P{\hat{u}_{n+1}(Y_{1:n}, Y_{n+1})  \leq \alpha, A_{n+1}} \\
+  & \leq \P{\hat{u}_{n+1}(Y_{1:n}, Y_{n+1})  \leq \alpha} \\
+  & \leq \alpha,
+\end{split}
+\end{align}
+where the last inequality follows from Proposition~\ref{prop:super-unif}.
+
+\subsection{Extension: leveraging the features} \label{sec:pval-extension-features}
+
+The test described in the previous section does not use the information in the features $X$. 
+Therefore, the p-value only depends on the observed labels in $Y_1, \ldots, Y_n$.
+However, there it would seem intuitive to also use the information in $X_{n+1}$.
+
+For each $i \in [n+1]$, let $\hat{s}(X_i; \{Z_j\}_{j \in [n+1]}) > 0$ denote a non-conformity score for $X_i$, computed by a function $\hat{s}$ whose parametrization may depend on the unordered data in $\{Z_j\}_{j \in [n+1]}$.
+We will discuss later how $\hat{s}$ may depend on $\{Z_j\}_{j \in [n+1]}$; for now, we can imagine it's a fixed function.
+Consider now computing $\hat{u}_j(z_1,\ldots,z_{n+1})$ in~\eqref{eq:conformal-p-value} based on a function $f$ defined as follows:
+\begin{align} \label{eq:def-f1}
+  f_1(\{z_{1:(n+1)}\} \setminus \{z_j\}, z_{j})
+  := - \frac{\phi_0\left( \{y_{1:(n+1)}\} \setminus \{y_j\}, y_j \right)}{\hat{s}(X_j)}
+\end{align}
+Then, assuming $y_{n+1}$ is  new, $\hat{u}_{n+1}(z_1,\ldots,z_{n+1})$ becomes:
+\begin{align*}
+  \hat{u}_{n+1}(z_1,\ldots,z_{n+1})
+  & = \frac{1}{n+1} \sum_{i=1}^{n+1} \I{ f_1(\{z_{1:(n+1)}\} \setminus \{z_i\}, z_{i}\}) \leq f_1(\{z_{1:n}\}, z_{n+1}\}) } \\
+    & = \frac{1}{n+1} \left( 1 + \sum_{i=1}^{n} \I{ - \frac{\phi_0\left( \{y_{1:(n+1)}\} \setminus \{y_i\}, y_i \right)}{\hat{s}(X_i)} \leq - \frac{\phi_0\left( \{y_{1:n}\}, y_{n+1} \right)}{\hat{s}(X_{n+1})} } \right) \\
+    & = \frac{1}{n+1} \left( 1 + \sum_{i=1}^{n} \I{ \frac{\phi_1\left( \{y_{1:n}\}, y_i \right)}{\hat{s}(X_i)} \geq \frac{1}{\hat{s}(X_{n+1})} } \right) \\
+    & = \frac{1}{n+1} \left( 1 + \sum_{i=1}^{n} \I{\phi_1\left( \{y_{1:n}\}, y_i \right)} \I{ \hat{s}(X_{n+1}) \geq \hat{s}(X_{i}) } \right) \\
+    & \leq \frac{M_n^1+1}{n+1}.
+\end{align*}
+In words, $\sum_{i=1}^{n} \I{\phi_1\left( \{y_{1:n}\}, y_i \right)} \I{ \hat{s}(X_{n+1}) \geq \hat{s}(X_{i}) }$ is the number of data points $i \in [n]$ whose label $Y_i$ appears exactly once and whose non-conformity score $\hat{s}(X_{i})$ is smaller or equal to $\hat{s}(X_{n+1})$. 
+This quantity cannot be larger than $M_n^1$, which means this p-value is more powerful than the p-value that ignores the features.
+
+Note that, almost surely,
+\begin{align*}
+ \frac{1}{n+1} \leq \hat{u}_{n+1}(z_1,\ldots,z_{n+1}) \leq \frac{M_n^1+1}{n+1}.
+\end{align*}
+Further, to better understand this new p-value, consider two special cases of interest. 
+
+On the one hand, suppose $\hat{s}(X_{n+1})$ is larger than the scores $\hat{s}(X_{i})$ for all data points $i \in [n]$ with label frequency 1. This is the worst case for the p-value, in the sense that it leads to
+\begin{align*}
+ \hat{u}_{n+1}(z_1,\ldots,z_{n+1}) = \frac{M_n^1+1}{n+1}.
+\end{align*}
+Intuitively, this makes sense: if the features $X_{n+1}$ are very strange, it seems more likely that $Y_{n+1}$ is a new label. So we should not be able to reject the null hypothesis.
+
+
+On the other hand, suppose $\hat{s}(X_{n+1})$ is smaller than the scores $\hat{s}(X_{i})$ for all data points $i \in [n]$ with label frequency 1. This is the best case for the p-value, in the sense that it leads to
+\begin{align*}
+ \hat{u}_{n+1}(z_1,\ldots,z_{n+1}) = \frac{1}{n+1}.
+\end{align*}
+Intuitively, this makes sense: if the features $X_{n+1}$ are less strange than those of the other points appearing only once, it seems very unlikely that $Y_{n+1}$ is a new label. So we should be able to more confidently reject the null hypothesis.
+
+This sheds some light onto how to define the non-conformity function $\hat{s}$. Ideally, we would like to minimize the p-value, which means we should try to minimize $\hat{s}(X_{n+1})$ relative to the scores $\hat{s}(X_{i})$ for all data points $i \in [n]$ with label frequency 1.
+How can we do this? An intuitive solution is the following.
+
+
+Recall that when defining $\hat{s}$ we are allowed to look at the unordered collection $\{Z_j\}_{j \in [n+1]}$.
+Of course, we don't know $Y_{n+1}$ but under $A_{n+1}$ it's fine to replace it with a random $Y^* \sim \nu_0$. So, let's suppose $Y_{n+1} = Y^*$.
+With this trick, we could fit a one-class classifier on the data in $\{X_j \text{ for } j \in [n+1] : Y_j \text{ appears at least twice in } \{Y_i\}_{i\in [n+1]} \}\}$. Intuitively, this means look only at the features of objects that have frequency at least 2 in $[n]$.
+This is a valid choice (it respects the symmetry that we need, at least under $A_{n+1}$) and it makes sense intuitively.
+It will give a smaller non-conformity score $\hat{s}(X_{n+1})$ if $X_{n+1}$ `looks like' an object that we have already seen at least twice.
+
+{\color{red} Questions. Is this choice optimal? Does it make sense to use a one-class classifier? }
+\tianmin[inline]{Can we think in this way? The other way to think is that here we make the $\hat{s}(X_{i})$ large for all data points $i \in [n]$ with label frequency 1. This is intuitive and applicable, because we are not assuming any model for conditional distribution between $X$ and $Y$. Instead, we are just characterizing the features of the group we are interested in. So, is it true that, for example, when $X$ are independent with $Y$, then the $M_n^1$ in the previous p-value would be replaced by approximately a sum of $M_n^1$ Bernoulli variables with probability $0.5$?}
+
+
+% \clearpage
+
+% What happens if we use $Y_{n+1}=y$ for some $y$ that occurs before in $\{Y_{1:n}\}$?
+% \begin{align*}
+%   \hat{u}_{n+1}(Y_1,\ldots,Y_{n}, y)
+%   & = \frac{1}{n+1} \sum_{i=1}^{n+1} \I{ f_0(\{Y_{1:n}\} \cup \{y\} \setminus \{Y_i\}, Y_{i}\}) \leq f_0(\{Y_{1:n}\}, y\}) } \\
+%   & = \frac{1}{n+1} \left( 1+ \sum_{i=1}^{n} \I{ f_0(\{Y_{1:n}\} \cup \{y\} \setminus \{Y_i\}, Y_{i}\}) \leq 0 } \right) \\
+%   & = 1,
+% \end{align*}
+% unless we randomize, of course.
+
+% Now consider a more general function, 
+% \begin{align} \label{eq:def-f0}
+%   f_k(A, y)
+%    := - \phi_k\left( A, y \right).
+% \end{align}
+% Then, 
+% \begin{align*}
+%   \hat{u}_{n+1}(Y_1,\ldots,Y_{n}, y)
+%   & = \frac{1}{n+1} \sum_{i=1}^{n+1} \I{ f_k(\{Y_{1:n}\} \cup \{y\} \setminus \{Y_i\}, Y_{i}\}) \leq f_k(\{Y_{1:n}\}, y\}) } \\
+%   & = \frac{1}{n+1}  \left( 1+ \sum_{i=1}^{n}\I{ f_k(\{Y_{1:n}\} \setminus \{Y_i\}, Y_{i}\}) \leq f_k(\{Y_{1:n}\}, y\}) } \right) \\
+%   & = \frac{1}{n+1}  \left( 1+ \sum_{i=1}^{n}\I{ -\phi_k(\{Y_{1:n}\} \setminus \{Y_i\}, Y_{i}\}) \leq - \phi_k(\{Y_{1:n}\}, y\}) } \right) \\
+%   & = \frac{1}{n+1}  \left( 1+ \sum_{i=1}^{n}\I{ -\phi_{k-1}(\{Y_{1:n}\}, Y_{i}\}) \leq - \phi_k(\{Y_{1:n}\}, y\}) } \right).
+% \end{align*}
+% Suppose $y$ occurs exactly $k$ times. Then,
+% \begin{align*}
+%   \hat{u}_{n+1}(Y_1,\ldots,Y_{n}, y)
+%   & = \frac{1}{n+1}  \left( 1+ \sum_{i=1}^{n}\I{ -\phi_{k-1}(\{Y_{1:n}\}, Y_{i}\}) \leq - \phi_k(\{Y_{1:n}\}, y\}) } \right) \\
+%   & = \frac{1}{n+1}  \left( 1+ \sum_{i=1}^{n}\I{ \phi_{k-1}(\{Y_{1:n}\}, Y_{i}\}) = 1 } \right) \\
+%   & = \frac{1}{n+1}  \left( 1+ M_n^{k-1} \right).
+% \end{align*}
+% Otherwise, if $y$ does not occur exactly $k$ times,
+% \begin{align*}
+%   \hat{u}_{n+1}(Y_1,\ldots,Y_{n}, y)
+%   & = \frac{1}{n+1}  \left( 1+ \sum_{i=1}^{n}\I{ -\phi_{k-1}(\{Y_{1:n}\}, Y_{i}\}) \leq - \phi_k(\{Y_{1:n}\}, y\}) } \right) \\
+%   & = \frac{1}{n+1}  \left( 1+ \sum_{i=1}^{n}\I{ - \phi_{k-1}(\{Y_{1:n}\}, Y_{i}\}) \leq 0 } \right) \\
+%   & = 1.
+% \end{align*}
+
+% Therefore, we may write
+% \begin{align*}
+%   \hat{u}_{n+1}(Y_1,\ldots,Y_{n}, y)
+%   & = \frac{1}{n+1}  \left( 1+ M_n^{k-1} \I{\phi_k( \{Z_{1:n}\} , y) = 1}  + n \I{\phi_k( \{Z_{1:n}\} , y) = 0} \right).
+% \end{align*}
+
+
+% where
+% \begin{align*}
+%   M_n^1 := \sum_{i=1}^{n} \phi_1 (\{Y_{1:n}\}, Y_{i}\})
+% \end{align*}
+
+\section{Classification}
+
+
+
+% Standard conformal classification methods (at the fixed level $\alpha \in (0,1)$) are designed to output a prediction set $\hat{C}^0_{\alpha}(X_{n+1})$ that is necessarily a subset of $\text{Unique}(Y_1, \ldots, Y_{n})$.
+% Even though the space $\mathcal{Y}$ is usually implicitly assumed to be finite and known, we can still apply standard conformal prediction methods even if $\mathcal{Y}$ is not known. In those cases, the conformal prediction sets can be easily proved to satisfy:
+% \begin{align}
+%   \P{ Y_{n+1} \in \hat{C}^0_{\alpha}(X_{n+1}) \mid Y_{n+1} \text{ is not a new species} } \geq 1-\alpha.
+% \end{align}
+% However, here we seek to achieve instead
+% \begin{align}
+%   \P{ Y_{n+1} \in \hat{C}^0_{\alpha}(X_{n+1})} \geq 1-\alpha.
+% \end{align}
+% Think of this as being a ``generalization'' of the missing mass problem, seen from a conformal prediction perspective.
+% Of course, one could always choose to ignore the features $X$, in which case the problem would become more similar to the standard missing mass problem.
+
+
+
+\subsection{Method}
+
+Method outline
+\begin{enumerate}
+\item Fix some $\alpha',\alpha'' \in (0,1)$ such that $\alpha' + \alpha'' = \alpha$.
+\item Imagine that $\mathcal{Y} = \{Y_1, \ldots, Y_n\}$. Then construct a prediction set $\hat{C}^0_{\alpha'}(X_{n+1})$ for $Y_{n+1}$ at level $\alpha'$, using standard conformal prediction techniques for finite label spaces (e.g., data splitting or CV+).
+\item Compute a conformal p-value $\psi_{n+1}(Z_1, \ldots, Z_n)$ for testing~\eqref{eq:H0-species}, as explained in Section~\ref{sec:methods-setup}.
+\item If $\psi_{n+1}(Z_1, \ldots, Z_n) \leq \alpha''$, output $\hat{C}^{1}_{\alpha}(X_{n+1}) = \hat{C}^0_{\alpha'}(X_{n+1})$. To understand this, note that $\psi_{n+1}(Z_1, \ldots, Z_n) \leq \alpha''$ implies we are confident (at level $\alpha''$) that the null hypothesis defined in~\eqref{eq:H0-species} is not true, which is equivalent to saying we believe $Y_{n+1}$ is not a new species. Therefore, in this case, we can trust $\hat{C}^0_{\alpha'}(X_{n+1})$.
+\item If $\psi_{n+1}(Z_1, \ldots, Z_n) > \alpha''$, output $\hat{C}^{1}_{\alpha}(X_{n+1}) = \hat{C}^0_{\alpha'}(X_{n+1}) \cup \{'?'\}$, where $'?'$ is a place-holder that means $Y_{n+1}$ might be a new species. To understand this, note that $\psi_{n+1}(Z_1, \ldots, Z_n) > \alpha''$ implies we cannot rule out (at level $\alpha''$) that $Y_{n+1}$ might be a new species. Therefore, in this case, we should not trust $\hat{C}^0_{\alpha'}(X_{n+1})$.
+\end{enumerate}
+
+We will now prove that this is a valid solution.
+
+
+\begin{proposition} \label{eq:coverage}
+Suppose $(X_1,Y_1),\ldots,(X_{n+1},Y_{n+1})$ are exchangeable. Let $\hat{C}^{1}_{\alpha}(X_{n+1}) $ be the prediction set for $Y_{n+1}$ constructed as outlined above.
+Then, for any $\alpha \in (0,1)$,
+\begin{align*}
+  \P{ Y_{n+1} \in \hat{C}^1_{\alpha}(X_{n+1})} \geq 1-\alpha,
+\end{align*}
+where it is understood that $y \in A \cup \{'?'\}$ for any $A \subseteq \mathcal{Y}$ and $y \in \mathcal{Y} \setminus \{Y_1, \ldots, Y_n\}$. In other words, the symbol $'?'$ catches everything that has not yet been observed.  {\color{red}[TODO: is there a more rigorous way of defining the meaning of the catch-all?}
+\end{proposition}
+
+
+\section{Theoretical Results} \label{sec:theory-good-turing-pvals}
+
+We provide some theoretical results with regard to the hypothesis testing problem studied in Section~\ref{sec:gt-pval}.
+
+\subsection{Hypothesis testing without features}
+
+\subsubsection{Optimality of the Good-Turing p-Value}
+
+
+We study here the problem of testing the null hypothesis defined in~\eqref{eq:H0-species} using statistics $f$ in~\eqref{eq:conformal-p-value} that depend only on the labels $Y$, and not on the features.
+In other words, consider conformal p-value functions of the form
+\begin{align} \label{eq:def-conf-pval-f}
+  \hat{u}_{n+1}(y_1,\ldots,y_{n+1})
+  & := \frac{1}{n+1} \sum_{i=1}^{n+1} \I{ f(\{y_{1:(n+1)}\} \setminus \{y_i\}, y_{i}) \leq f(\{y_{1:n}\}, y_{n+1}) },
+\end{align}
+for some suitable choice of $f$.
+Since we are working under a non-parametric model~\eqref{eq:species-model}, where the face values of the $y$ labels have no meaning, it is reasonable to restrict our attention to functions $f(A,y)$ that depend only on the relative frequency of the label $y$ in the subset $A$. 
+However, this implies that $f(\{y_{1:(n+1)}\} \setminus \{y_i\}, y_{i})$ must be a constant for all $i \in S_{n+1}^1$, where $S_{n+1}^1$ is the subset of $[n+1]$ for which the symbol $y_i$ has frequency 1 in $\{y_{1:(n+1)}\}$. Since $|S_{n+1}^1| = M_n^1 + 1$, this implies that, for any $f$,
+\begin{align*}
+  \hat{u}_{n+1}(y_1,\ldots,y_{n+1})
+  & = \frac{1}{n+1} \sum_{i=1}^{n+1} \I{ f(\{y_{1:(n+1)}\} \setminus \{y_i\}, y_{i}) \leq f(\{y_{1:n}\}, y_{n+1}) } \\
+  & = \frac{1}{n+1} \left( \sum_{i \in S_{n+1}^1} 1 + \sum_{i \in [n] \setminus S_{n+1}^1} \I{ f(\{y_{1:(n+1)}\} \setminus \{y_i\}, y_{i}) \leq f(\{y_{1:n}\}, y_{n+1}) } \right) \\
+  & \geq \frac{M_n^1 + 1}{n+1}.
+\end{align*}
+Therefore, the Good-Turing p-value defined in~\eqref{eq:p-value-GT} is optimal among the conformal p-values based on feature-blind deterministic functions $f$.
+
+{\color{red}[Can we write this result in a more formal or general way? For example, is it necessary that the conformal p-value can only be in the form of~\eqref{eq:def-conf-pval-f}? Can we prove that there is no way to obtain a better conformal p-value without additional information (e.g., features) or randomization?] } 
+
+
+\subsubsection{Randomized Good-Turing p-Value}
+
+{\color{red}[Note that the notation in this section is a little different. Should be made consistent.]}
+
+Consider a {\em randomized} function $f$ in~\eqref{eq:def-conf-pval-f}, such that
+\begin{align} \label{eq:def-f-randomized}
+  f(\{y_{1:n}\}, y_{n+1}, \xi_{n+1})
+  & := \I{\sum_{i=1}^{n} \I{y_i = y_{n+1}}=0} \cdot \xi_{n+1},
+\end{align}
+where
+\begin{align*}
+  \xi_i \overset{i.i.d.}{\sim} \text{Bernoulli}(\rho),
+\end{align*}
+for some $\rho \in [0,1]$.
+To simplify the notation, let us write
+$$f(\{y_{1:n}\}, y_{n+1}, \xi_{n+1}) := \phi_0(y_{n+1}, \{y_{1:n}\}) \cdot \xi_{n+1}.$$
+
+Then, the conformal p-value becomes:
+\begin{align*}
+  \tilde{u}(Y_{1:n}, Y^*)
+  & := \frac{1}{n+1} \left( 1 + \sum_{i=1}^{n} \I{ \xi_{n+1} \phi_0(\{Y_{1:n}\}, Y^*\}) \leq \xi_{i} \phi_0(\{Y_{1:n}\} \cup \{Y^*\} \setminus \{Y_i\}, Y_{i}\}) } \right) \\
+  & = \frac{1}{n+1} \left( 1 + \sum_{i=1}^{n} \I{ \xi_{n+1} \leq \xi_{i} \phi_0(\{Y_{1:n}\} \setminus \{Y_i\}, Y_{i}\}) } \right) \\
+  & = \frac{1}{n+1} \left( 1 + \sum_{i \in S^n_1} \I{\xi_{n+1} \leq \xi_{i}} + \sum_{i \in [n] \setminus S^n_1} \I{\xi_{n+1} = 0} \right),
+\end{align*}
+where $S^n_1$ is the subset of species in $Y_{1:n}$ observed exactly once.
+
+ The expected value of this randomized p-value conditional on the data and on $Y^*$ is:
+ \begin{align*}
+   \E{\tilde{u}(Y_{1:n}, Y^*) \mid Y_{1:n}, Y^*}
+   & = \frac{1}{n+1} \left[ 1 + M_n^1 \cdot \P{\xi_{n+1} \leq \xi_{i}} + (n-M_n^1) \P{\xi_{n+1} = 0} \right] \\
+   & = \frac{1}{n+1} \left[ 1 + M_n^1 (1 - \rho(1-\rho)) + (n-M_n^1)(1-\rho) \right] \\
+   & = \frac{1}{n+1} \left[ 1 + M_n^1 \rho^2 + n(1-\rho) \right].
+ \end{align*}
+
+When is this better than the deterministic Good-Turing p-value? We need to check when
+ \begin{align*}
+   1 + M_n^1 \rho^2 + n(1-\rho) \leq 1 + M_n^1.
+ \end{align*}
+This is equivalent to:
+ \begin{align*}
+   \rho \geq \frac{n-M_n^1}{M_n^1}.
+ \end{align*}
+Therefore, we should only randomize if $M_n^1 \geq n/2$, setting
+ \begin{align*}
+   \rho = \rho^* := \min \left\{ 1, \frac{n}{2M_n^1} \right\}.
+ \end{align*}
+
+What does this mean? Recall that the null hypothesis is that $Y_{n+1}$ is a new species.
+Therefore, we only expect to reject for small values of $M_n^1$. If $M_n^1 \geq n/2$, we don't expect to reject, with or without randomization. 
+In fact, if $M_n^1 \geq n/2$,
+ \begin{align*}
+   \E{\tilde{u}(Y_{1:n}, Y^*) \mid Y_{1:n}, Y^*}
+   & = \frac{1}{n+1} \left[ 1 + M_n^1 \rho^2 + n(1-\rho) \right] \\
+   & = \frac{1}{n+1} \left[ 1 + \frac{n^2}{4M_n^1} + n - \frac{n^2}{2M_n^1} \right] \\
+   & = \frac{1}{n+1} \left[ 1 + n -  \frac{n^2}{4M_n^1}  \right] \\
+   & = 1 - \frac{n}{n+1} \cdot \frac{1}{2} \cdot \frac{n}{2M_n^1}.
+ \end{align*}
+ In the best-case scenario where $M_n^1 = n/2$, this becomes 
+ \begin{align*}
+   \E{\tilde{u}(Y_{1:n}, Y^*) \mid Y_{1:n}, Y^*}
+   & = 1 - \frac{1}{2} \frac{n}{n+1},
+ \end{align*}
+which is almost $1/2$. This is a large p-value, which we would typically never reject. Therefore, randomization doesn't help much. The Good-Turing p-value is still essentially optimal.
+
+{\color{red}[ Can we make this section more rigorous and general? Can we prove a similar optimality under all possible randomized p-values? Is the randomized $f$ in~\eqref{eq:def-f-randomized} the only possible way to randomize?]}
+
+
+\section{Empirical Demonstrations}
+
+{\color{red} TODO:
+\begin{itemize}
+    \item How to design numerical experiments? (Separately for hypothesis testing and classification)
+    \item What data can we apply these methods to?
+\end{itemize}
+}
+
+\section{Open Questions}
+
+\begin{enumerate}
+\item {\color{red}Literature review.} Conformal classification with unbounded label space. Has anyone looked at this before? What other relevant works are there?
+\item {\color{red}Applications.} Find a compelling practical motivation for this work. Should include a story and a data set.
+\item Method extensions. Our goal is to construct the smallest possible prediction set $\hat{C}^1_{\alpha}(X_{n+1})$ satisfying~\eqref{eq:coverage}, and we should be careful to use the symbol $'?'$ only when needed.
+Therefore, we will need to carefully choose the parameters $\alpha'$, $\alpha''$, and the function $\hat{\psi}$. 
+As a starting point, we should explain how to use the feature information within $\hat{\psi}$ in Section~\ref{sec:pval-extension-features}.
+\item Method implementation. What's the best way to construct $\hat{C}^0_{\alpha'}(X_{n+1})$? Suppose we do data splitting. Then some of the labels in $\{Y_1, \ldots, Y_n\}$ might not even appear within the training set. Therefore, we should do some ``smoothing" (e.g., Good-Turing) of the predicted class probabilities before we compute conformity scores. 
+\item Theoretical study. Improve results in Section~\ref{sec:theory-good-turing-pvals}. Expand theoretical study in other directions, using the features?
+\end{enumerate}
+
+
+\printbibliography %Prints bibliography
+
+\clearpage
+
+\appendix
+
+\section{Proofs} \label{app:proofs}
+
+\begin{proof}[Proof of Proposition~\ref{prop:super-unif}]
+This is a standard exchangeability result. For any $i \in [n+1]$, define the function $S_i(Z_1,\ldots,Z_{n+1})$ (in short, $S_i$), as
+\begin{align*}
+  S_i = f(\{Z_{1:(n+1)}\} \setminus \{Z_i\}, Z_{i}\}).
+\end{align*}
+With this notation, $\hat{u}_j$ in~\eqref{eq:conformal-p-value} becomes the relative rank of $S_j$ among $\{S_1,\ldots,S_{n+1}\}$:
+\begin{align} \label{eq:conformal-p-value}
+  \hat{u}_j(Z_1,\ldots,Z_{n+1})
+  & := \frac{1}{n+1} \sum_{i=1}^{n+1} \I{ S_i \leq S_j}.
+\end{align}
+Therefore, it suffices to show that $S_1,\ldots,S_{n+1}$ are exchangeable.
+
+To this end, let $\sigma$ be any permutation of $\{1,\ldots,n+1\}$, and note that, for any $j \in [n+1]$,
+\begin{align*}
+  \left( S_{\sigma(1)}, \ldots, S_{\sigma(n+1)} \right)
+  & = \left( f(\{Z_{1:(n+1)}\} \setminus \{Z_{\sigma(1)}\}, Z_{\sigma(1)}\}), \ldots, f(\{Z_{1:(n+1)}\} \setminus \{Z_{\sigma(n+1)}\}, Z_{\sigma(n+1)}\}) \right) \\
+  & = \left( f(\{\tilde{Z}_{1:(n+1)}\} \setminus \{\tilde{Z}_{1}\}, \tilde{Z}_{1}\}), \ldots, f(\{\tilde{Z}_{1:(n+1)}\} \setminus \{\tilde{Z}_{n+1}\}, \tilde{Z}_{n+1}\}) \right) \\
+  & = \left( \tilde{S}_{1}, \ldots, \tilde{S}_{n+1} \right),
+\end{align*}
+where $\tilde{Z} = \sigma \circ Z$ and each $\tilde{S}_i = f(\{\tilde{Z}_{1:(n+1)}\} \setminus \{\tilde{Z}_i\}, \tilde{Z}_{i}\})$.
+The proof is completed by noting that 
+\begin{align*}
+  \left( \tilde{Z}_{1}, \ldots, \tilde{Z}_{n+1} \right) \overset{d}{=} \left( Z_{1}, \ldots, Z_{1} \right) \Longrightarrow
+  \left( \tilde{S}_{1}, \ldots, \tilde{S}_{n+1} \right) \overset{d}{=} \left( S_{1}, \ldots, S_{1} \right).
+\end{align*}
+Therefore,
+\begin{align*}
+  \left( S_{\sigma(1)}, \ldots, S_{\sigma(n+1)} \right) \overset{d}{=} \left( S_{1}, \ldots, S_{n+1} \right).
+\end{align*}
+\end{proof}
+
+
+\begin{proof}[Proof of Equation~\eqref{eq:p-value-GT}]
+To simplify the notation, in this proof we denote $Y_{n+1}=Y^*$.
+  By construction, $Y_{n+1}$ almost-surely never occurs in $\{Y_{1:n}\}$. Therefore,
+\begin{align*}
+  \hat{u}_{n+1}(Y_1,\ldots,Y_{n+1})
+  & := \frac{1}{n+1} \sum_{i=1}^{n+1} \I{ f_0(\{Y_{1:(n+1)}\} \setminus \{Y_i\}, Y_{i}\}) \leq f_0(\{Y_{1:n}\}, Y_{n+1}\}) } \\
+  & = \frac{1}{n+1} \left( 1 + \sum_{i=1}^{n} \I{ f_0(\{Y_{1:(n+1)}\} \setminus \{Y_i\}, Y_{i}\}) \leq -1 } \right) \\
+  & = \frac{1}{n+1} \left( 1 + \sum_{i=1}^{n} \phi_0 (\{Y_{1:(n+1)}\} \setminus \{Y_i\}, Y_{i}\}) \right) \\
+  & = \frac{1}{n+1} \left( 1 + \sum_{i=1}^{n} \phi_0 (\{Y_{1:n}\} \setminus \{Y_i\}, Y_{i}\}) \right) \\
+  & = \frac{1}{n+1} \left( 1 + \sum_{i=1}^{n} \phi_1 (\{Y_{1:n}\}, Y_{i}\}) \right) \\
+  & = \frac{M_n^1+1}{n+1},
+\end{align*}
+where
+\begin{align*}
+  M_n^1 := \sum_{i=1}^{n} \phi_1 (\{Y_{1:n}\}, Y_{i}\})
+\end{align*}
+
+\end{proof}
+
+
+\begin{proof}[Proof of Proposition~\ref{eq:coverage}]
+Recall the definition of the event $A_{n+1}$ in~\eqref{eq:event-A}: $A_{n+1} = \{X_{n+1} \text{ is a new species.}\}$. Let $A^c_{n+1}$ be the complement of $A_{n+1}$. Then,
+\begin{align*}
+  \P{ Y_{n+1} \notin \hat{C}^1_{\alpha'}(X_{n+1})}
+  & = \P{ Y_{n+1} \notin \hat{C}^1_{\alpha'}(X_{n+1}), A^c_{n+1}} + \P{ Y_{n+1} \notin \hat{C}^1_{\alpha'}(X_{n+1}), A_{n+1}} \\
+  & = \P{ Y_{n+1} \notin \hat{C}^0_{\alpha'}(X_{n+1}), A^c_{n+1}} + \P{ '?' \notin \hat{C}^1_{\alpha'}(X_{n+1}), A_{n+1}} \\
+  & = \P{ Y_{n+1} \notin \hat{C}^0_{\alpha'}(X_{n+1}), A^c_{n+1}} + \P{ \hat{\psi}(Y_1,\ldots,Y_n) \leq \alpha'',  A_{n+1}} \\
+  & \leq \P{ Y_{n+1} \notin \hat{C}^0_{\alpha'}(X_{n+1}), A^c_{n+1}} + \alpha'',
+  % & = \P{ Y_{n+1} \notin \hat{C}^0_{\alpha'}(X_{n+1}), A^c_{n+1}} + \P{ \hat{\psi}(Y_1,\ldots,Y_n) \leq \beta,  A_{n+1}} \\
+  % & \leq \P{ Y_{n+1} \notin \hat{C}^0_{\alpha'}(X_{n+1}) \mid A^c_{n+1}}  + \P{ \hat{\psi}(Y_1,\ldots,Y_n) \leq \beta,  A_{n+1}} \\
+  % & \leq \alpha'  + \P{ \hat{\psi}(Y_1,\ldots,Y_n) \leq \beta,  A_{n+1}} \\
+  % & = \alpha'  + \P{ \hat{u}(Y_{1:n}, Y^*) \leq \beta,  A_{n+1}} \\
+  % & = \alpha'  + \P{ \hat{u}(Y_{1:n}, Y_{n+1}) \leq \beta,  A_{n+1}} \\
+  % & \leq \alpha'  + \P{ \hat{u}(Y_{1:n}, Y_{n+1}) \leq \beta} \\
+  % & \leq \alpha'  + \beta.
+\end{align*}
+where the last inequality follows from~\eqref{eq:validity-pval}.
+To bound $\P{ Y_{n+1} \notin \hat{C}^0_{\alpha'}(X_{n+1}), A^c_{n+1}}$, consider an imaginary oracle that knows the true label $Y_{n+1}$ and utilizes it to construct a prediction set $\hat{C}^{\text{oracle}}_{\alpha'}(X_{n+1})$ for $Y_{n+1}$ in a non-trivial way as follows.
+The oracle assumes that the label space is finite and equal to: $\mathcal{Y} = \{Y_1, \ldots, Y_{n+1}\}$. Then, it constructs the prediction set $\hat{C}^{\text{oracle}}_{\alpha'}(X_{n+1})$ for $Y_{n+1}$ by applying standard conformal prediction techniques for finite label spaces (e.g., data splitting or CV+).
+Using standard exchangeability arguments, it is easy to show that
+\begin{align} \label{eq:coverage-oracle}
+  \P{ Y_{n+1} \notin \hat{C}^{\text{oracle}}_{\alpha'}(X_{n+1})} \leq \alpha'.
+\end{align}
+In fact, the oracle differs from standard conformal prediction methods only insofar as it uses knowledge of the unordered collection $\{Y_1, \ldots, Y_{n+1}\}$, which is invariant to permutations. Therefore, conditioning on $\{Y_1, \ldots, Y_{n+1}\}$ does not break the exchangeability required to prove~\eqref{eq:coverage-oracle}.
+{\color{red}[TODO: write this more rigorously.]}
+
+This oracle is relevant for us because, under $A^c_{n+1}$, we have $\hat{C}^{0}_{\alpha'}(X_{n+1}) = \hat{C}^{\text{oracle}}_{\alpha'}(X_{n+1})$ almost-surely. That is,
+\begin{align*}
+  \I{Y_{n+1} \notin \hat{C}^0_{\alpha'}(X_{n+1}), A^c_{n+1}} = \I{Y_{n+1} \notin \hat{C}^{\text{oracle}}_{\alpha'}(X_{n+1}), A^c_{n+1}},
+\end{align*}
+almost surely. Therefore, 
+\begin{align*}
+  \P{ Y_{n+1} \notin \hat{C}^1_{\alpha'}(X_{n+1})}
+  & \leq \P{ Y_{n+1} \notin \hat{C}^0_{\alpha'}(X_{n+1}), A^c_{n+1}} + \alpha'' \\
+  & \leq \P{ Y_{n+1} \notin \hat{C}^{\text{oracle}}_{\alpha'}(X_{n+1}), A^c_{n+1}} + \alpha'' \\
+  & \leq \P{ Y_{n+1} \notin \hat{C}^{\text{oracle}}_{\alpha'}(X_{n+1})} + \alpha'' \\
+  & \leq \alpha' + \alpha'' \\
+  & = \alpha.
+\end{align*}
+
+\end{proof}
+
+
+
+\clearpage
+
+
+
+
+
+\end{document}
+
+%%% Local Variables:
+%%% mode: latex
+%%% TeX-master: t
+%%% End:

@@ -1,0 +1,8 @@
+#!/bin/bash
+
+module purge
+
+eval "$(conda shell.bash hook)"
+conda activate species
+
+python3 real_experiment_celeb.py $1 $2 $3 $4 $5 $6 $7 $8 $9 ${10}
