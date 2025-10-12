@@ -10,7 +10,7 @@ sys.path.insert(0, '../cgtc/')
 from distributions_x import ShiftedNormal
 from distributions_y import ZipfDist
 from testing import compute_GT_pvalues_testing_new, compute_XGT_pvalues_testing_new, compute_RGT_pvalues_testing_new, compute_RGT_pvalues_testing_old
-from split import SplitConformal, SplitConformalFull, SelectiveSplitConformal
+from split import SplitConformal, SplitConformalFull, SelectiveSplitConformal, BernoulliSplitConformal
 
 sys.path.insert(0, os.path.abspath('../third_party'))
 from arc import models, methods, black_boxes, others, coverage
@@ -98,6 +98,34 @@ def get_preliminary_sets_naive_full(
 
     return decoded_preliminary_sets
 
+
+def get_preliminary_sets_Bernoulli(
+    X_train_calib, Y_train_calib, X_test,
+    alpha_prime, black_box, calibration_probability,
+    random_state=None
+):
+    # Encode
+    label_encoder = LabelEncoder()
+    Y_train_calib_encoded = label_encoder.fit_transform(Y_train_calib)
+
+    # Note: Unlike other methods, calibration is determined by the provided frequency function.
+    method_bs = BernoulliSplitConformal(
+        X_train_calib,
+        Y_train_calib_encoded,
+        black_box,
+        alpha_prime,
+        calibration_probability,
+        random_state=random_state
+    )
+    encoded_preliminary_sets = method_bs.predict(X_test)
+
+    # Decode each set to the original label space.
+    decoded_preliminary_sets = []
+    for enc_set in encoded_preliminary_sets:
+        decoded_set = label_encoder.inverse_transform(enc_set)
+        decoded_preliminary_sets.append(list(decoded_set))
+
+    return decoded_preliminary_sets
 
 
 #Refactor the methods to save computation
