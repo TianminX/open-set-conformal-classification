@@ -20,7 +20,7 @@ import arc
 from arc import methods
 
 sys.path.insert(0, '/')
-from conformal_methods import get_preliminary_sets_Bernoulli, get_preliminary_sets_naive, finalize_prediction_sets_new, evaluate_prediction_sets
+from conformal_methods import get_preliminary_sets_Bernoulli, get_preliminary_sets_naive, finalize_prediction_sets, evaluate_prediction_sets
 from distributions_x import ShiftedNormal
 from distributions_y import DirichletProcess
 from utils import calibration_probability_rate, calibration_probability_level, tune_calibration_params
@@ -97,7 +97,7 @@ def tune_alpha_allocation_bernoulli_coverage(
                 )
 
                 # Finalize prediction sets
-                final_sets = finalize_prediction_sets_new(
+                final_sets = finalize_prediction_sets(
                     prelim_sets,
                     X_train, Y_train, X_val,
                     pvalue_method,
@@ -323,7 +323,7 @@ def tune_alpha_allocation_loss(
                     )
 
                 # Finalize prediction sets
-                final_sets = finalize_prediction_sets_new(
+                final_sets = finalize_prediction_sets(
                     prelim_sets,
                     X_train, Y_train, X_val,
                     pvalue_method,
@@ -596,7 +596,7 @@ def tune_alpha_allocation_loss_all(
                         )
 
                     # Finalize prediction sets
-                    final_sets = finalize_prediction_sets_new(
+                    final_sets = finalize_prediction_sets(
                         prelim_sets,
                         X_train, Y_train, X_val,
                         pvalue_method,
@@ -895,7 +895,7 @@ def tune_alpha_allocation_loss_all_optimized(
                     prelim_sets = prelim_cache[alpha_class][fold_idx]
 
                     # Finalize prediction sets (depends on alpha_new/alpha_old)
-                    final_sets = finalize_prediction_sets_new(
+                    final_sets = finalize_prediction_sets(
                         prelim_sets,
                         fold_data['X_train'], fold_data['Y_train'], fold_data['X_val'],
                         pvalue_method,
@@ -1205,7 +1205,7 @@ def tune_alpha_allocation_loss_all_fast(
         seen_labels = set(seen_labels_cache[fold_idx])
 
         # Finalize depends on alpha_new/alpha_old
-        final_sets = finalize_prediction_sets_new(
+        final_sets = finalize_prediction_sets(
             prelim_sets,
             X_train, Y_train, X_val,
             pvalue_method,
