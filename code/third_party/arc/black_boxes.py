@@ -6,6 +6,11 @@ from sklearn.neural_network import MLPClassifier
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.naive_bayes import GaussianNB
+from scipy.stats import weibull_min
+from scipy.spatial.distance import cdist
+from sklearn.preprocessing import StandardScaler
+from sklearn.utils.class_weight import compute_sample_weight
+from sklearn.utils import resample
 
 import copy
 
@@ -888,6 +893,317 @@ class OpenSetKNN:
         return new_prob
 
 
+###############################################################################
+# OpenMax helpers (shared by both neural-net and KNN variants)
+###############################################################################
+
+def _fit_weibull_tail(distances, tail_size):
+    """Fit a Weibull distribution on the *tail_size* largest distances.
+
+    Returns (shape, scale) or None if fitting fails.
+    """
+    if len(distances) < 2:
+        return None
+    tail = np.sort(distances)[-tail_size:]
+    tail = tail[tail > 0]
+    if len(tail) < 3:
+        return None
+    try:
+        c, _, scale = weibull_min.fit(tail, floc=0)
+        return (c, scale)
+    except Exception:
+        return None
+
+
+def _openmax_revision(p_seen, w):
+    """Apply the OpenMax probability revision.
+
+    Parameters
+    ----------
+    p_seen : ndarray, shape (n, K)
+        Base classifier probabilities for K seen classes.
+    w : ndarray, shape (n, K)
+        Weibull-CDF revision weights in [0, 1].
+
+    Returns
+    -------
+    prob : ndarray, shape (n, K+1)
+        Columns 0..K-1  = p_k * (1 - w_k)     (revised seen-class probs)
+        Column  K       = sum_k p_k * w_k      (unknown-class prob)
+        Rows sum to 1 (no renormalization needed).
+    """
+    p_revised = p_seen * (1.0 - w)
+    p_unknown = np.sum(p_seen * w, axis=1, keepdims=True)
+    return np.hstack([p_revised, p_unknown])
+
+
+###############################################################################
+# Original OpenMax  (MLP + penultimate-layer activations)
+###############################################################################
+
+class OpenMaxMLP:
+    """
+    Original OpenMax classifier (Bendale & Boult, 2016).
+
+    Uses an MLP neural network.  After training, for each class k:
+      - Compute the Mean Activation Vector (MAV) mu_k from correctly
+        classified training points in the penultimate layer.
+      - Fit a Weibull distribution on the tail of ||act_i - mu_k||
+        for training points i of class k.
+
+    At test time:
+      1. Forward pass through the MLP to get penultimate-layer activation v(x).
+      2. Compute softmax probabilities p_k(x) from the network output.
+      3. For each class k, compute d_k = ||v(x) - mu_k|| and
+         w_k = WeibullCDF_k(d_k).
+      4. Only revise the top alpha_rank classes; set w_k = 0 for the rest.
+      5. Revised probs:
+           pi_k(x)      = p_k(x) * (1 - w_k)
+           pi_unknown(x) = sum_k p_k(x) * w_k
+      6. Return (n, K+1) matrix.
+    """
+
+    def __init__(self,
+                 hidden_layer_sizes=(128,),
+                 activation='relu',
+                 max_iter=500,
+                 random_state=None,
+                 tail_size=20,
+                 alpha_rank=None):
+        """
+        Parameters
+        ----------
+        hidden_layer_sizes : tuple
+            Architecture of the MLP (last element is the penultimate layer).
+        tail_size : int
+            Number of largest MAV distances used for Weibull fitting per class.
+        alpha_rank : int or None
+            Revise only the top alpha_rank classes.  None = revise all.
+        """
+        self.hidden_layer_sizes = hidden_layer_sizes
+        self.activation = activation
+        self.max_iter = max_iter
+        self.random_state = random_state
+        self.tail_size = tail_size
+        self.alpha_rank = alpha_rank
+
+    # ----- helpers -----------------------------------------------------------
+
+    def _penultimate_activations(self, X):
+        """Forward pass up to (but not including) the output layer."""
+        a = X
+        # All layers except the last one
+        for i in range(len(self.model_.coefs_) - 1):
+            a = a @ self.model_.coefs_[i] + self.model_.intercepts_[i]
+            if self.activation == 'relu':
+                a = np.maximum(a, 0)
+            elif self.activation == 'tanh':
+                a = np.tanh(a)
+            elif self.activation == 'logistic':
+                a = 1.0 / (1.0 + np.exp(-a))
+        return a
+
+    # ----- main API ----------------------------------------------------------
+
+    def fit(self, X, y):
+        self.classes_ = np.unique(y)
+        self.num_classes = len(self.classes_)
+        self.n_train = len(y)
+
+        # Train MLP
+        self.model_ = MLPClassifier(
+            hidden_layer_sizes=self.hidden_layer_sizes,
+            activation=self.activation,
+            max_iter=self.max_iter,
+            random_state=self.random_state
+        )
+        self.model_.fit(X, y)
+
+        # Penultimate-layer activations for training data
+        acts = self._penultimate_activations(X)
+        preds = self.model_.predict(X)
+
+        # Per-class MAV and Weibull fitting
+        self.mav_ = {}
+        self.weibull_params_ = {}
+        all_tail_dists = []
+
+        for k in self.classes_:
+            # Use only correctly classified training points
+            mask = (y == k) & (preds == k)
+            if mask.sum() == 0:
+                mask = (y == k)       # fallback: use all points of class k
+            acts_k = acts[mask]
+            self.mav_[k] = acts_k.mean(axis=0)
+
+            dists = np.linalg.norm(acts_k - self.mav_[k], axis=1)
+            all_tail_dists.extend(dists[dists > 0].tolist())
+            self.weibull_params_[k] = _fit_weibull_tail(dists, self.tail_size)
+
+        # Pooled Weibull fallback
+        self.pooled_weibull_ = None
+        if all_tail_dists:
+            pooled = np.array(all_tail_dists)
+            n_tail = min(self.tail_size * 10, len(pooled))
+            self.pooled_weibull_ = _fit_weibull_tail(pooled, n_tail)
+
+        return copy.deepcopy(self)
+
+    def predict(self, X):
+        return self.model_.predict(X)
+
+    def predict_proba(self, X, y_calib=None):
+        """Return (n, K+1) probability matrix.  y_calib is unused."""
+        if X.ndim == 1:
+            X = X.reshape(1, -1)
+
+        n = X.shape[0]
+        K = self.num_classes
+
+        # Base softmax probabilities (n, K)
+        p_seen = self.model_.predict_proba(X)
+
+        # Penultimate-layer activations
+        acts = self._penultimate_activations(X)
+
+        # Weibull revision weights
+        w = np.zeros((n, K))
+        for j, k in enumerate(self.classes_):
+            params = self.weibull_params_.get(k) or self.pooled_weibull_
+            if params is not None:
+                c, scale = params
+                d = np.linalg.norm(acts - self.mav_[k], axis=1)
+                w[:, j] = weibull_min.cdf(d, c, loc=0, scale=scale)
+
+        # Only revise top alpha_rank classes per sample
+        if self.alpha_rank is not None and self.alpha_rank < K:
+            for i in range(n):
+                top = np.argsort(-p_seen[i])[:self.alpha_rank]
+                mask = np.ones(K, dtype=bool)
+                mask[top] = False
+                w[i, mask] = 0.0
+
+        return _openmax_revision(p_seen, w)
+
+
+###############################################################################
+# OpenMax-KNN  (KNN + centroid distances for Weibull fitting)
+###############################################################################
+
+class OpenMaxKNN:
+    """
+    OpenMax algorithm adapted for KNN.
+
+    Instead of neural-network activations, uses distances from test points
+    to per-class centroids in the original feature space.
+
+    Training:
+      1. Fit KNN.
+      2. For each class k, compute centroid mu_k and within-class distances.
+      3. Fit Weibull on tail distances.  Classes with < tail_size samples
+         use a pooled Weibull.
+
+    Prediction for x:
+      1. Base KNN probabilities p_k(x), k = 1..K.
+      2. d_k(x) = ||x - mu_k||.
+      3. w_k(x) = WeibullCDF_k(d_k(x)) for top alpha_rank classes.
+      4. pi_k(x)      = p_k(x) * (1 - w_k(x))
+         pi_unknown(x) = sum_k p_k(x) * w_k(x)
+      5. Return (n, K+1).
+    """
+
+    def __init__(self,
+                 n_neighbors=5,
+                 weights='distance',
+                 algorithm='auto',
+                 leaf_size=30,
+                 p=2,
+                 metric='minkowski',
+                 metric_params=None,
+                 n_jobs=None,
+                 clip_proba_factor=1e-20,
+                 tail_size=20,
+                 alpha_rank=None):
+        self.model = KNeighborsClassifier(
+            n_neighbors=n_neighbors, weights=weights, algorithm=algorithm,
+            leaf_size=leaf_size, p=p, metric=metric,
+            metric_params=metric_params, n_jobs=n_jobs
+        )
+        self.factor = clip_proba_factor
+        self.tail_size = tail_size
+        self.alpha_rank = alpha_rank
+
+    def fit(self, X, y):
+        self.classes_ = np.unique(y)
+        self.num_classes = len(self.classes_)
+        self.n_train = len(y)
+        self.model_fit = self.model.fit(X, y)
+
+        # Per-class centroids and Weibull
+        self.centroids_ = {}
+        self.weibull_params_ = {}
+        all_tail_dists = []
+
+        for k in self.classes_:
+            X_k = X[y == k]
+            self.centroids_[k] = X_k.mean(axis=0)
+
+            if len(X_k) >= 2:
+                dists = np.linalg.norm(X_k - self.centroids_[k], axis=1)
+                all_tail_dists.extend(dists[dists > 0].tolist())
+                self.weibull_params_[k] = _fit_weibull_tail(dists, self.tail_size)
+            else:
+                self.weibull_params_[k] = None
+
+        # Pooled Weibull fallback
+        self.pooled_weibull_ = None
+        if all_tail_dists:
+            pooled = np.array(all_tail_dists)
+            n_tail = min(self.tail_size * 10, len(pooled))
+            self.pooled_weibull_ = _fit_weibull_tail(pooled, n_tail)
+
+        return copy.deepcopy(self)
+
+    def predict(self, X):
+        return self.model_fit.predict(X)
+
+    def predict_proba(self, X, y_calib=None):
+        """Return (n, K+1) probability matrix.  y_calib is unused."""
+        if X.ndim == 1:
+            X = X.reshape(1, -1)
+
+        n = X.shape[0]
+        K = self.num_classes
+
+        # Base KNN probabilities
+        p_seen = self.model_fit.predict_proba(X)
+        p_seen = np.clip(p_seen, self.factor / K, 1.0)
+        p_seen = p_seen / p_seen.sum(axis=1)[:, None]
+
+        # Distances to centroids
+        distances = np.zeros((n, K))
+        for j, k in enumerate(self.classes_):
+            distances[:, j] = np.linalg.norm(X - self.centroids_[k], axis=1)
+
+        # Weibull revision weights
+        w = np.zeros((n, K))
+        for j, k in enumerate(self.classes_):
+            params = self.weibull_params_.get(k) or self.pooled_weibull_
+            if params is not None:
+                c, scale = params
+                w[:, j] = weibull_min.cdf(distances[:, j], c, loc=0, scale=scale)
+
+        # Only revise top alpha_rank classes per sample
+        if self.alpha_rank is not None and self.alpha_rank < K:
+            for i in range(n):
+                top = np.argsort(-p_seen[i])[:self.alpha_rank]
+                mask = np.ones(K, dtype=bool)
+                mask[top] = False
+                w[i, mask] = 0.0
+
+        return _openmax_revision(p_seen, w)
+
+
 class LogisticRegressionUnseenCalib:
     def __init__(self, calibrate=False, clip_proba_factor=0.1, multi_class = 'multinomial', solver='lbfgs'):
         """
@@ -1171,7 +1487,6 @@ class NNetUnseenCalib:
         self.num_classes = len(self.classes_)
 
         # Scale features for better NN training
-        from sklearn.preprocessing import StandardScaler
         self.scaler = StandardScaler()
         X_scaled = self.scaler.fit_transform(X)
 
@@ -1289,9 +1604,6 @@ class NNetRobust:
         self.use_class_weight = use_class_weight
 
     def fit(self, X, y):
-        from sklearn.preprocessing import StandardScaler
-        from sklearn.utils.class_weight import compute_sample_weight
-
         self.classes_ = np.unique(y)
         self.num_classes = len(self.classes_)
 
@@ -1304,7 +1616,6 @@ class NNetRobust:
             sample_weights = compute_sample_weight('balanced', y)
             # Can't directly pass sample_weight to MLPClassifier
             # So we'll use oversampling for rare classes instead
-            from sklearn.utils import resample
 
             # Oversample rare classes
             X_resampled = []

@@ -16,7 +16,7 @@ from arc import methods
 
 sys.path.insert(0, '../cgtc/')
 from alpha_tune_function import tune_alpha_allocation_loss_all_optimized
-from conformal_methods import evaluate_prediction_sets, finalize_prediction_sets, get_preliminary_sets_naive_full, get_preliminary_sets_naive, get_preliminary_sets_benchmark, get_preliminary_sets_Bernoulli, get_preliminary_sets_Bernoulli_test
+from conformal_methods import evaluate_prediction_sets, finalize_prediction_sets, get_preliminary_sets_naive_full, get_preliminary_sets_naive, get_preliminary_sets_benchmark, get_preliminary_sets_Bernoulli
 from distributions_x import ShiftedNormal
 from distributions_y import DirichletProcess
 from testing import select_beta_cv

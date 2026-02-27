@@ -5,6 +5,9 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from sklearn.neighbors import LocalOutlierFactor
 from sklearn.preprocessing import LabelEncoder
+from sklearn.model_selection import train_test_split
+from scipy.stats.mstats import mquantiles
+from arc.classification import ProbabilityAccumulator as ProbAccum
 
 sys.path.insert(0, '../cgtc/')
 from distributions_x import ShiftedNormal
@@ -166,6 +169,87 @@ def get_preliminary_sets_benchmark(
 
     return decoded_preliminary_sets
 
+
+
+def get_prediction_sets_openmax(
+    X_train_calib, Y_train_calib, X_test,
+    alpha, black_box, calib_size,
+    random_state=None
+):
+    """
+    Split-conformal classification with an OpenMax-style open-set classifier.
+
+    The classifier outputs K+1 probabilities (K seen classes + 1 unknown).
+    Standard split conformal is applied over this (K+1)-class space.
+    Calibration points whose true label is not in Y_train are scored
+    against the "unknown" column (index K).
+
+    Returns
+    -------
+    decoded_sets : list of list
+        Each inner list contains original labels and/or '?' (the joker_train).
+    Y_train : ndarray
+        The training labels (original space) so the caller can evaluate
+        coverage relative to joker_train.
+    """
+    # ---- 1. Split into train / calibration --------------------------------
+    calib_num = int(calib_size * len(Y_train_calib))
+    X_train, X_calib, Y_train, Y_calib = train_test_split(
+        X_train_calib, Y_train_calib,
+        test_size=calib_num, random_state=random_state
+    )
+    n2 = len(Y_calib)
+
+    # ---- 2. Encode training labels to 0..K-1 ------------------------------
+    label_encoder = LabelEncoder()
+    label_encoder.fit(Y_train)
+    Y_train_encoded = label_encoder.transform(Y_train)
+    K = len(label_encoder.classes_)
+    train_label_set = set(label_encoder.classes_)
+
+    # ---- 3. Fit classifier on encoded training data -----------------------
+    fitted_bb = black_box.fit(X_train, Y_train_encoded)
+
+    # ---- 4. Map calibration labels ----------------------------------------
+    #   seen  → encoded index (0..K-1)
+    #   unseen → K  (the "unknown" column)
+    Y_calib_mapped = np.array([
+        label_encoder.transform([y])[0] if y in train_label_set else K
+        for y in Y_calib
+    ])
+
+    # ---- 5. Calibrate -----------------------------------------------------
+    p_hat_calib = fitted_bb.predict_proba(X_calib)  # (n_calib, K+1)
+
+    grey_box = ProbAccum(p_hat_calib)
+    rng = np.random.default_rng(random_state)
+    epsilon = rng.uniform(0.0, 1.0, size=n2)
+    alpha_max = grey_box.calibrate_scores(Y_calib_mapped, epsilon=epsilon)
+    scores = alpha - alpha_max
+    level_adjusted = (1.0 - alpha) * (1.0 + 1.0 / float(n2))
+    alpha_correction = mquantiles(scores, prob=level_adjusted)
+    alpha_calibrated = alpha - alpha_correction
+
+    # ---- 6. Predict on test data ------------------------------------------
+    p_hat_test = fitted_bb.predict_proba(X_test)    # (n_test, K+1)
+    grey_box_test = ProbAccum(p_hat_test)
+    epsilon_test = rng.uniform(0.0, 1.0, size=len(X_test))
+    S_hat = grey_box_test.predict_sets(
+        alpha_calibrated, epsilon=epsilon_test, allow_empty=True
+    )
+
+    # ---- 7. Decode: 0..K-1 → original labels,  K → '?' ------------------
+    decoded_sets = []
+    for enc_set in S_hat:
+        decoded = []
+        for idx in enc_set:
+            if idx < K:
+                decoded.append(label_encoder.inverse_transform([idx])[0])
+            else:
+                decoded.append("?")
+        decoded_sets.append(decoded)
+
+    return decoded_sets, Y_train
 
 
 def compute_pvalues_dispatch(
