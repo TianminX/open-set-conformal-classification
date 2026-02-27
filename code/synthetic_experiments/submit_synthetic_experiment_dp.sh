@@ -1,11 +1,10 @@
 #!/bin/bash
 
-# List of different theta values to experiment with (formatted to 2 decimal places)
-THETA_LIST=(1000) # (12 25 50 100 200 300 400 500 600 700 800 900 1000)
-#(25 50 100 200 400 800 1600 3200 6400 12800 25600 51200 102400)
+# List of different theta values to experiment with
+THETA_LIST=(12 25 50 100 200 300 400 500 600 700 800 900 1000)
 
 # List of different n_ref values
-N_REF_LIST=(1000 3000 4000 5000 6000) # (2000)
+N_REF_LIST=(2000)
 
 # List of n_test values
 N_TEST_LIST=(1000)
@@ -14,7 +13,7 @@ N_TEST_LIST=(1000)
 CALIB_PROPORTION=0.1
 
 # List of alpha_total values (total significance budget)
-ALPHA_TOTAL_LIST=(0.10) # 0.20
+ALPHA_TOTAL_LIST=(0.10)
 
 # List of lambda_weight values (weight parameter for loss function, between 0 and 1)
 LAMBDA_WEIGHT_LIST=(0.50)
@@ -27,21 +26,21 @@ TUNING_METHOD_LIST=(0)
 
 
 # SLURM parameters
-MEMO=16G                             # Memory required (e.g., 8 GB)
-TIME=00-10:00:00                    # Time required (e.g., 30 minutes)
+MEMO=16G                             # Memory required
+TIME=00-10:00:00                     # Time required
 
 # SBATCH command template
 ORDP="sbatch --mem="$MEMO" --nodes=1 --ntasks=1 --cpus-per-task=1 --time="$TIME
 
 # Ensure the results and logs directories exist
-mkdir -p "results/dp/"
+# NOTE: Python script writes to results/dp_tuned_mixed_labels/
+mkdir -p "results/dp_tuned_mixed_labels/"
 mkdir -p "logs/dp/"
 
-# Loop through all combinations of theta, n_ref, batch_num, calib_num, alpha_total, and lambda_weight
-# Loop with BATCH as the outermost loop
+# Loop through all combinations
 for BATCH in $BATCH_LIST; do
   echo "Processing Batch $BATCH..."
-    
+
   for THETA in "${THETA_LIST[@]}"; do
     for N_REF in "${N_REF_LIST[@]}"; do
       for N_TEST in "${N_TEST_LIST[@]}"; do
@@ -51,7 +50,6 @@ for BATCH in $BATCH_LIST; do
             for TUNING_METHOD in "${TUNING_METHOD_LIST[@]}"; do
 
               # Format values consistently
-              # THETA_FMT=$(printf "%.2f" "$THETA")
               ALPHA_TOTAL_FMT=$(printf "%.3f" "$ALPHA_TOTAL")
               LAMBDA_WEIGHT_FMT=$(printf "%.2f" "$LAMBDA_WEIGHT")
 
@@ -62,8 +60,8 @@ for BATCH in $BATCH_LIST; do
               OUTF="logs/dp/${JOBN}.out"
               ERRF="logs/dp/${JOBN}.err"
 
-              # Define the base pattern once
-              OUT_FILE_FMT="results/dp/dp_theta%s_nref${N_REF}_ntest${N_TEST}_cs${CALIB_NUM}_atotal${ALPHA_TOTAL_FMT}_lambda${LAMBDA_WEIGHT_FMT}_tune${TUNING_METHOD}_batch${BATCH}.csv"
+              # Check for existing output (matches Python's output path: results/dp_tuned_mixed_labels/)
+              OUT_FILE_FMT="results/dp_tuned_mixed_labels/dp_theta%s_nref${N_REF}_ntest${N_TEST}_cs${CALIB_NUM}_atotal${ALPHA_TOTAL_FMT}_lambda${LAMBDA_WEIGHT_FMT}_tune${TUNING_METHOD}_batch${BATCH}.csv"
 
               # Two possible outputs (integer vs integer.0)
               OUT_FILE_INT=$(printf "$OUT_FILE_FMT" "$THETA")
