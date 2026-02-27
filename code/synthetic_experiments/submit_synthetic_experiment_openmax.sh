@@ -20,7 +20,7 @@ BATCH_LIST=$(seq 1 10)
 
 # SLURM parameters
 MEMO=16G                             # Memory required
-TIME=00-10:00:00                     # Time required
+TIME=00-02:00:00                     # Time required
 
 # SBATCH command template
 ORDP="sbatch --mem="$MEMO" --nodes=1 --ntasks=1 --cpus-per-task=1 --time="$TIME
