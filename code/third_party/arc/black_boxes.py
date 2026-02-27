@@ -1953,3 +1953,394 @@ class CosineClassifier:
     def predict(self, X_full):
         probs = self.predict_proba(X_full)
         return self.classes_[np.argmax(probs, axis=1)]
+
+
+###############################################################################
+# OpenSet classifiers using OpenMax p_open instead of Good-Turing
+###############################################################################
+
+class OpenSetKNNOpenMax:
+    """
+    KNN classifier that uses an OpenMax-style Weibull revision to estimate the
+    probability of the "unknown" class (p_open), then distributes it uniformly
+    across unseen calibration labels.
+
+    This replaces the Good-Turing estimator used in OpenSetKNN:
+        GT:      p_unseen_per_label = (1 + n_singletons) / ((1 + n_train) * |C_unseen|)
+        OpenMax: p_unseen_per_label = p_open(x) / |C_unseen|
+
+    where p_open(x) = sum_k  p_k(x) * w_k(x)  is the OpenMax unknown-class
+    probability (feature-dependent, varies per sample).
+
+    Training:
+      1. Fit KNN.
+      2. For each class k, compute centroid mu_k and within-class distances.
+      3. Fit Weibull on tail distances (same as OpenMaxKNN).
+
+    Prediction for x (with unseen calibration labels):
+      1. Base KNN probabilities p_k(x), k = 1..K.
+      2. d_k(x) = ||x - mu_k||.
+      3. w_k(x) = WeibullCDF_k(d_k(x)).
+      4. p_open(x) = sum_k p_k(x) * w_k(x).
+      5. For each unseen label: p_unseen = p_open(x) / |C_unseen| + noise.
+      6. Scale seen probabilities to sum to (1 - p_open(x)).
+      7. Return (n, K + |C_unseen|).
+    """
+
+    def __init__(self, calibrate=False,
+                 n_neighbors=5,
+                 weights='uniform',
+                 algorithm='auto',
+                 leaf_size=30,
+                 p=2,
+                 metric='minkowski',
+                 metric_params=None,
+                 n_jobs=None,
+                 clip_proba_factor=0.1,
+                 noise_scale=1e-6,
+                 tail_size=20,
+                 alpha_rank=None):
+        self.model = KNeighborsClassifier(
+            n_neighbors=n_neighbors,
+            weights=weights,
+            algorithm=algorithm,
+            leaf_size=leaf_size,
+            p=p,
+            metric=metric,
+            metric_params=metric_params,
+            n_jobs=n_jobs
+        )
+        self.calibrate = calibrate
+        self.factor = clip_proba_factor
+        self.calibrated = None
+        self.noise_scale = noise_scale
+        self.tail_size = tail_size
+        self.alpha_rank = alpha_rank
+
+    def fit(self, X, y):
+        self.classes_ = np.unique(y)
+        self.num_classes = len(self.classes_)
+        self.model_fit = self.model.fit(X, y)
+        self.n_train = len(y)
+
+        if self.calibrate:
+            self.calibrated = calibration.CalibratedClassifierCV(
+                self.model_fit, method='sigmoid', cv=10
+            )
+            self.calibrated.fit(X, y)
+        else:
+            self.calibrated = None
+
+        # Per-class centroids and Weibull fitting (same as OpenMaxKNN)
+        self.centroids_ = {}
+        self.weibull_params_ = {}
+        all_tail_dists = []
+
+        for k in self.classes_:
+            X_k = X[y == k]
+            self.centroids_[k] = X_k.mean(axis=0)
+
+            if len(X_k) >= 2:
+                dists = np.linalg.norm(X_k - self.centroids_[k], axis=1)
+                all_tail_dists.extend(dists[dists > 0].tolist())
+                self.weibull_params_[k] = _fit_weibull_tail(dists, self.tail_size)
+            else:
+                self.weibull_params_[k] = None
+
+        # Pooled Weibull fallback
+        self.pooled_weibull_ = None
+        if all_tail_dists:
+            pooled = np.array(all_tail_dists)
+            n_tail = min(self.tail_size * 10, len(pooled))
+            self.pooled_weibull_ = _fit_weibull_tail(pooled, n_tail)
+
+        return copy.deepcopy(self)
+
+    def predict(self, X):
+        return self.model_fit.predict(X)
+
+    def _compute_p_open(self, X, p_seen):
+        """Compute per-sample OpenMax unknown-class probability.
+
+        Returns
+        -------
+        p_open : ndarray, shape (n,)
+            p_open[i] = sum_k p_k[i] * w_k[i]
+        """
+        n = X.shape[0]
+        K = self.num_classes
+
+        # Distances to centroids
+        distances = np.zeros((n, K))
+        for j, k in enumerate(self.classes_):
+            distances[:, j] = np.linalg.norm(X - self.centroids_[k], axis=1)
+
+        # Weibull revision weights
+        w = np.zeros((n, K))
+        for j, k in enumerate(self.classes_):
+            params = self.weibull_params_.get(k) or self.pooled_weibull_
+            if params is not None:
+                c, scale = params
+                w[:, j] = weibull_min.cdf(distances[:, j], c, loc=0, scale=scale)
+
+        # Only revise top alpha_rank classes per sample
+        if self.alpha_rank is not None and self.alpha_rank < K:
+            for i in range(n):
+                top = np.argsort(-p_seen[i])[:self.alpha_rank]
+                mask = np.ones(K, dtype=bool)
+                mask[top] = False
+                w[i, mask] = 0.0
+
+        p_open = np.sum(p_seen * w, axis=1)
+        return p_open
+
+    def predict_proba(self, X, y_calib=None):
+        """
+        Predict class probabilities using OpenMax p_open for unseen labels.
+
+        When y_calib is provided, unseen labels are identified and each receives
+        p_open(x) / |C_unseen| (plus small noise to break ties).
+        Seen-class probabilities are scaled to sum to (1 - p_open(x)).
+        """
+        if len(X.shape) == 1:
+            X = X.reshape((1, -1))
+
+        # Base KNN probabilities for seen classes
+        if self.calibrated is None:
+            p_seen = self.model_fit.predict_proba(X)
+        else:
+            p_seen = self.calibrated.predict_proba(X)
+
+        p_seen = np.clip(p_seen, self.factor / self.num_classes, 1.0)
+        p_seen = p_seen / p_seen.sum(axis=1)[:, None]
+
+        n, K = p_seen.shape
+
+        # Determine unseen labels
+        if y_calib is not None:
+            all_classes_set = set(self.classes_).union(set(np.unique(y_calib)))
+            self.full_classes = np.array(sorted(all_classes_set))
+            self.train_to_full_idx = {}
+            for i, cls in enumerate(self.classes_):
+                full_idx = np.where(self.full_classes == cls)[0][0]
+                self.train_to_full_idx[i] = full_idx
+        else:
+            if not hasattr(self, 'full_classes'):
+                return p_seen
+
+        num_full_classes = len(self.full_classes)
+        new_prob = np.zeros((n, num_full_classes))
+
+        # Identify unseen class indices
+        unseen_mask = np.ones(num_full_classes, dtype=bool)
+        for train_class in self.classes_:
+            idx = np.where(self.full_classes == train_class)[0][0]
+            unseen_mask[idx] = False
+        unseen_indices = np.where(unseen_mask)[0]
+        num_unseen = len(unseen_indices)
+
+        if num_unseen > 0:
+            # Compute per-sample p_open via OpenMax Weibull revision
+            p_open = self._compute_p_open(X, p_seen)
+
+            # Cap p_open to avoid degenerate seen-class probabilities
+            p_open = np.clip(p_open, 0.0, 0.5)
+
+            for i in range(n):
+                # Distribute p_open uniformly across unseen labels + noise
+                base_unseen = p_open[i] / num_unseen
+                for unseen_idx in unseen_indices:
+                    noise = np.random.uniform(-self.noise_scale, self.noise_scale)
+                    new_prob[i, unseen_idx] = base_unseen * (1 + noise)
+
+                # Scale seen-class probabilities to fill remaining mass
+                remaining = 1.0 - p_open[i]
+                for train_idx, train_class in enumerate(self.classes_):
+                    full_idx = np.where(self.full_classes == train_class)[0][0]
+                    new_prob[i, full_idx] = p_seen[i, train_idx] * remaining
+
+            # Final renormalization
+            new_prob = new_prob / new_prob.sum(axis=1)[:, None]
+        else:
+            for train_idx, train_class in enumerate(self.classes_):
+                full_idx = np.where(self.full_classes == train_class)[0][0]
+                new_prob[:, full_idx] = p_seen[:, train_idx]
+
+        return new_prob
+
+
+class OpenSetMLPOpenMax:
+    """
+    MLP classifier that uses OpenMax-style Weibull revision on penultimate-layer
+    activations to estimate p_open, then distributes it uniformly across unseen
+    calibration labels.
+
+    Same idea as OpenSetKNNOpenMax but uses:
+      - MLP for base classification
+      - Penultimate-layer activations for MAV centroids and Weibull fitting
+    """
+
+    def __init__(self,
+                 hidden_layer_sizes=(128,),
+                 activation='relu',
+                 max_iter=500,
+                 random_state=None,
+                 clip_proba_factor=0.1,
+                 noise_scale=1e-6,
+                 tail_size=20,
+                 alpha_rank=None):
+        self.hidden_layer_sizes = hidden_layer_sizes
+        self.activation = activation
+        self.max_iter = max_iter
+        self.random_state = random_state
+        self.factor = clip_proba_factor
+        self.noise_scale = noise_scale
+        self.tail_size = tail_size
+        self.alpha_rank = alpha_rank
+
+    def _penultimate_activations(self, X):
+        """Forward pass up to (but not including) the output layer."""
+        a = X
+        for i in range(len(self.model_.coefs_) - 1):
+            a = a @ self.model_.coefs_[i] + self.model_.intercepts_[i]
+            if self.activation == 'relu':
+                a = np.maximum(a, 0)
+            elif self.activation == 'tanh':
+                a = np.tanh(a)
+            elif self.activation == 'logistic':
+                a = 1.0 / (1.0 + np.exp(-a))
+        return a
+
+    def fit(self, X, y):
+        self.classes_ = np.unique(y)
+        self.num_classes = len(self.classes_)
+        self.n_train = len(y)
+
+        # Train MLP
+        self.model_ = MLPClassifier(
+            hidden_layer_sizes=self.hidden_layer_sizes,
+            activation=self.activation,
+            max_iter=self.max_iter,
+            random_state=self.random_state
+        )
+        self.model_.fit(X, y)
+
+        # Penultimate-layer activations for training data
+        acts = self._penultimate_activations(X)
+        preds = self.model_.predict(X)
+
+        # Per-class MAV and Weibull fitting
+        self.mav_ = {}
+        self.weibull_params_ = {}
+        all_tail_dists = []
+
+        for k in self.classes_:
+            mask = (y == k) & (preds == k)
+            if mask.sum() == 0:
+                mask = (y == k)
+            acts_k = acts[mask]
+            self.mav_[k] = acts_k.mean(axis=0)
+
+            dists = np.linalg.norm(acts_k - self.mav_[k], axis=1)
+            all_tail_dists.extend(dists[dists > 0].tolist())
+            self.weibull_params_[k] = _fit_weibull_tail(dists, self.tail_size)
+
+        # Pooled Weibull fallback
+        self.pooled_weibull_ = None
+        if all_tail_dists:
+            pooled = np.array(all_tail_dists)
+            n_tail = min(self.tail_size * 10, len(pooled))
+            self.pooled_weibull_ = _fit_weibull_tail(pooled, n_tail)
+
+        return copy.deepcopy(self)
+
+    def predict(self, X):
+        return self.model_.predict(X)
+
+    def _compute_p_open(self, X, p_seen):
+        """Compute per-sample OpenMax unknown-class probability using MAV distances."""
+        n = X.shape[0]
+        K = self.num_classes
+
+        acts = self._penultimate_activations(X)
+
+        w = np.zeros((n, K))
+        for j, k in enumerate(self.classes_):
+            params = self.weibull_params_.get(k) or self.pooled_weibull_
+            if params is not None:
+                c, scale = params
+                d = np.linalg.norm(acts - self.mav_[k], axis=1)
+                w[:, j] = weibull_min.cdf(d, c, loc=0, scale=scale)
+
+        if self.alpha_rank is not None and self.alpha_rank < K:
+            for i in range(n):
+                top = np.argsort(-p_seen[i])[:self.alpha_rank]
+                mask = np.ones(K, dtype=bool)
+                mask[top] = False
+                w[i, mask] = 0.0
+
+        return np.sum(p_seen * w, axis=1)
+
+    def predict_proba(self, X, y_calib=None):
+        """
+        Predict class probabilities using OpenMax p_open for unseen labels.
+
+        When y_calib is provided, unseen labels are identified and each receives
+        p_open(x) / |C_unseen| (plus small noise to break ties).
+        Seen-class probabilities are scaled to sum to (1 - p_open(x)).
+        """
+        if len(X.shape) == 1:
+            X = X.reshape((1, -1))
+
+        # Base MLP probabilities for seen classes
+        p_seen = self.model_.predict_proba(X)
+        p_seen = np.clip(p_seen, self.factor / self.num_classes, 1.0)
+        p_seen = p_seen / p_seen.sum(axis=1)[:, None]
+
+        n, K = p_seen.shape
+
+        # Determine unseen labels
+        if y_calib is not None:
+            all_classes_set = set(self.classes_).union(set(np.unique(y_calib)))
+            self.full_classes = np.array(sorted(all_classes_set))
+            self.train_to_full_idx = {}
+            for i, cls in enumerate(self.classes_):
+                full_idx = np.where(self.full_classes == cls)[0][0]
+                self.train_to_full_idx[i] = full_idx
+        else:
+            if not hasattr(self, 'full_classes'):
+                return p_seen
+
+        num_full_classes = len(self.full_classes)
+        new_prob = np.zeros((n, num_full_classes))
+
+        # Identify unseen class indices
+        unseen_mask = np.ones(num_full_classes, dtype=bool)
+        for train_class in self.classes_:
+            idx = np.where(self.full_classes == train_class)[0][0]
+            unseen_mask[idx] = False
+        unseen_indices = np.where(unseen_mask)[0]
+        num_unseen = len(unseen_indices)
+
+        if num_unseen > 0:
+            p_open = self._compute_p_open(X, p_seen)
+            p_open = np.clip(p_open, 0.0, 0.5)
+
+            for i in range(n):
+                base_unseen = p_open[i] / num_unseen
+                for unseen_idx in unseen_indices:
+                    noise = np.random.uniform(-self.noise_scale, self.noise_scale)
+                    new_prob[i, unseen_idx] = base_unseen * (1 + noise)
+
+                remaining = 1.0 - p_open[i]
+                for train_idx, train_class in enumerate(self.classes_):
+                    full_idx = np.where(self.full_classes == train_class)[0][0]
+                    new_prob[i, full_idx] = p_seen[i, train_idx] * remaining
+
+            new_prob = new_prob / new_prob.sum(axis=1)[:, None]
+        else:
+            for train_idx, train_class in enumerate(self.classes_):
+                full_idx = np.where(self.full_classes == train_class)[0][0]
+                new_prob[:, full_idx] = p_seen[:, train_idx]
+
+        return new_prob
