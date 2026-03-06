@@ -191,6 +191,8 @@ def get_prediction_sets_openmax(
     Y_train : ndarray
         The training labels (original space) so the caller can evaluate
         coverage relative to joker_train.
+    Y_calib : ndarray
+        The calibration labels (original space).
     """
     # ---- 1. Split into train / calibration --------------------------------
     calib_num = int(calib_size * len(Y_train_calib))
@@ -249,7 +251,100 @@ def get_prediction_sets_openmax(
                 decoded.append("?")
         decoded_sets.append(decoded)
 
-    return decoded_sets, Y_train
+    return decoded_sets, Y_train, Y_calib
+
+
+def get_prediction_sets_openmax_bernoulli(
+    X_train_calib, Y_train_calib, X_test,
+    alpha, black_box, calibration_probability,
+    random_state=None
+):
+    """
+    Bernoulli split-conformal classification with an OpenMax-style open-set classifier.
+
+    Uses Bernoulli splitting (each point assigned to calibration independently
+    based on label frequency) so that rare/frequency-1 labels stay in training.
+    Standard (unweighted) conformal quantile is used for all K+1 candidates.
+
+    Returns
+    -------
+    decoded_sets : list of list
+        Each inner list contains original labels and/or '?' (the joker_train).
+    Y_train : ndarray
+        The training labels (original space).
+    Y_calib : ndarray
+        The calibration labels (original space).
+    """
+    n = len(Y_train_calib)
+    rng = np.random.default_rng(random_state)
+
+    # ---- 1. Bernoulli split based on label frequencies -----------------------
+    unique_labels_all, counts_all = np.unique(Y_train_calib, return_counts=True)
+    label_counts_all = dict(zip(unique_labels_all, counts_all))
+
+    I = np.empty(n, dtype=bool)
+    for i in range(n):
+        count_i = label_counts_all[Y_train_calib[i]]
+        I[i] = (rng.uniform() < calibration_probability(count_i))
+
+    calib_idx = np.where(I)[0]
+    train_idx = np.where(~I)[0]
+    X_train, Y_train = X_train_calib[train_idx], Y_train_calib[train_idx]
+    X_calib, Y_calib = X_train_calib[calib_idx], Y_train_calib[calib_idx]
+    n2 = len(Y_calib)
+
+    from tqdm import tqdm
+    tqdm.write(f"Bernoulli OpenMax: Total={n}, Calib={n2}, Train={len(Y_train)}")
+
+    # ---- 2. Encode training labels to 0..K-1 --------------------------------
+    label_encoder = LabelEncoder()
+    label_encoder.fit(Y_train)
+    Y_train_encoded = label_encoder.transform(Y_train)
+    K = len(label_encoder.classes_)
+    train_label_set = set(label_encoder.classes_)
+
+    # ---- 3. Fit classifier on encoded training data -------------------------
+    fitted_bb = black_box.fit(X_train, Y_train_encoded)
+
+    # ---- 4. Map calibration labels -------------------------------------------
+    #   seen  -> encoded index (0..K-1)
+    #   unseen -> K  (the "unknown" column)
+    Y_calib_mapped = np.array([
+        label_encoder.transform([y])[0] if y in train_label_set else K
+        for y in Y_calib
+    ])
+
+    # ---- 5. Calibrate (standard quantile) ------------------------------------
+    p_hat_calib = fitted_bb.predict_proba(X_calib)  # (n_calib, K+1)
+
+    grey_box = ProbAccum(p_hat_calib)
+    epsilon = rng.uniform(0.0, 1.0, size=n2)
+    alpha_max = grey_box.calibrate_scores(Y_calib_mapped, epsilon=epsilon)
+    scores = alpha - alpha_max
+    level_adjusted = (1.0 - alpha) * (1.0 + 1.0 / float(n2))
+    alpha_correction = mquantiles(scores, prob=level_adjusted)
+    alpha_calibrated = alpha - alpha_correction
+
+    # ---- 6. Predict on test data ---------------------------------------------
+    p_hat_test = fitted_bb.predict_proba(X_test)    # (n_test, K+1)
+    grey_box_test = ProbAccum(p_hat_test)
+    epsilon_test = rng.uniform(0.0, 1.0, size=len(X_test))
+    S_hat = grey_box_test.predict_sets(
+        alpha_calibrated, epsilon=epsilon_test, allow_empty=True
+    )
+
+    # ---- 7. Decode: 0..K-1 -> original labels,  K -> '?' -------------------
+    decoded_sets = []
+    for enc_set in S_hat:
+        decoded = []
+        for idx in enc_set:
+            if idx < K:
+                decoded.append(label_encoder.inverse_transform([idx])[0])
+            else:
+                decoded.append("?")
+        decoded_sets.append(decoded)
+
+    return decoded_sets, Y_train, Y_calib
 
 
 def compute_pvalues_dispatch(

@@ -7,4 +7,4 @@ eval "$(conda shell.bash hook)"
 conda activate species
 
 # Run the Python script with the input arguments
-python synthetic_experiment_openmax_cgtc.py $1 $2 $3 $4 $5 $6 $7 $8
+python synthetic_experiment_openmax_cgtc.py "$@"

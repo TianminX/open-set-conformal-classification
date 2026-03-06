@@ -12,7 +12,7 @@ import arc
 from arc import black_boxes
 
 sys.path.insert(0, '../cgtc/')
-from conformal_methods import evaluate_prediction_sets, get_prediction_sets_openmax
+from conformal_methods import evaluate_prediction_sets, get_prediction_sets_openmax, get_prediction_sets_openmax_bernoulli
 from distributions_x import ShiftedNormal
 from distributions_y import DirichletProcess
 
@@ -91,6 +91,31 @@ feature_dist = ShiftedNormal(num_features, sigma)
 data_dist = DataDistribution_1(label_dist, feature_dist)
 
 #####################
+# Bernoulli helpers #
+#####################
+
+def calib_prob_real(frequency, exp_prop=calib_size, freq_one_prop=None):
+    """
+    Given a label frequency, returns the probability of that label's data points
+    being selected into the calibration set. Frequency-1 labels are never calibrated.
+    """
+    if frequency <= 1:
+        return 0.0
+    if freq_one_prop is not None and freq_one_prop < 1.0:
+        adjusted_prob = exp_prop / (1 - freq_one_prop)
+        return min(adjusted_prob, 1.0)
+    return exp_prop
+
+
+def calculate_freq_one_proportion(Y_ref):
+    """Calculate the proportion of data points that have frequency-1 labels."""
+    unique_labels, counts = np.unique(Y_ref, return_counts=True)
+    freq_one_labels = unique_labels[counts == 1]
+    freq_one_mask = np.isin(Y_ref, freq_one_labels)
+    return np.mean(freq_one_mask)
+
+
+#####################
 # Classifiers       #
 #####################
 
@@ -125,6 +150,8 @@ classifier_openmax_mlp = black_boxes.OpenMaxMLP(
 methods_list = {
     'Method (OpenMax-KNN)': classifier_openmax_knn,
     'Method (OpenMax-MLP)': classifier_openmax_mlp,
+    'Method (Bernoulli OpenMax-KNN)': classifier_openmax_knn,
+    'Method (Bernoulli OpenMax-MLP)': classifier_openmax_mlp,
 }
 
 
@@ -163,16 +190,30 @@ def analyze_data_openmax(X_ref, Y_ref, X_test, Y_test, methods_list,
     prop_unseen_ref = np.mean(unseen_mask_ref)
     num_unseen_ref = np.sum(unseen_mask_ref)
 
+    # Compute adjusted calibration probability for Bernoulli methods
+    freq_one_prop = calculate_freq_one_proportion(Y_ref)
+    calib_prob_adjusted = partial(calib_prob_real,
+                                  exp_prop=calib_size,
+                                  freq_one_prop=freq_one_prop)
+
     results_df = pd.DataFrame()
 
     for method_name, classifier in methods_list.items():
         tqdm.write(f"Running {method_name}")
 
-        prediction_sets, Y_train = get_prediction_sets_openmax(
-            X_ref, Y_ref, X_test,
-            alpha=alpha, black_box=classifier, calib_size=calib_size,
-            random_state=random_state
-        )
+        if 'Bernoulli' in method_name:
+            prediction_sets, Y_train, Y_calib = get_prediction_sets_openmax_bernoulli(
+                X_ref, Y_ref, X_test,
+                alpha=alpha, black_box=classifier,
+                calibration_probability=calib_prob_adjusted,
+                random_state=random_state
+            )
+        else:
+            prediction_sets, Y_train, Y_calib = get_prediction_sets_openmax(
+                X_ref, Y_ref, X_test,
+                alpha=alpha, black_box=classifier, calib_size=calib_size,
+                random_state=random_state
+            )
 
         # --- Evaluate with Y_ref (for comparison with CGTC) ---
         new_results = evaluate_prediction_sets(
@@ -217,6 +258,24 @@ def analyze_data_openmax(X_ref, Y_ref, X_test, Y_test, methods_list,
         else:
             seen_train_coverage = np.nan
 
+        # --- Compute calib-not-train metrics ---
+        # Test points whose label is in calibration but not in training
+        seen_labels_calib = np.unique(Y_calib)
+        calib_not_train_mask = (~np.isin(Y_test, seen_labels_train)) & np.isin(Y_test, seen_labels_calib)
+        prop_calib_not_train = np.mean(calib_not_train_mask)
+        num_calib_not_train = np.sum(calib_not_train_mask)
+
+        # Coverage for calib-not-train test points (joker covers these)
+        calib_not_train_idx = [i for i, m in enumerate(calib_not_train_mask) if m]
+        if calib_not_train_idx:
+            calib_not_train_coverage = np.mean([
+                1 if ('?' in prediction_sets[i] or Y_test[i] in prediction_sets[i])
+                else 0
+                for i in calib_not_train_idx
+            ])
+        else:
+            calib_not_train_coverage = np.nan
+
         # Add columns
         new_results['method'] = method_name
         new_results['pvalue_method'] = 'N/A'
@@ -229,9 +288,12 @@ def analyze_data_openmax(X_ref, Y_ref, X_test, Y_test, methods_list,
         new_results['alpha_class'] = alpha
         new_results['alpha_unseen'] = 0.0
         new_results['alpha_seen'] = 0.0
+        new_results['prop_calib_not_train'] = prop_calib_not_train
+        new_results['num_calib_not_train'] = int(num_calib_not_train)
         new_results['Coverage (joker_train)'] = coverage_joker_train
         new_results['Unseen Coverage (joker_train)'] = unseen_train_coverage
         new_results['Seen Coverage (joker_train)'] = seen_train_coverage
+        new_results['Calib-not-train Coverage (joker_train)'] = calib_not_train_coverage
 
         results_df = pd.concat([results_df, new_results])
 

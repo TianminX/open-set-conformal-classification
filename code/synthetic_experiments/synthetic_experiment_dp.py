@@ -27,34 +27,40 @@ from testing import select_beta_cv
 # Define parameters #
 #####################
 
-if len(sys.argv) != 9:
+# Parse command-line arguments
+# Tuned mode:  python synthetic_experiment_dp.py theta n_ref n_test calib_num alpha_total lambda_weight batch_num tuning_method_flag
+# Fixed mode:  python synthetic_experiment_dp.py theta n_ref n_test calib_num alpha_total lambda_weight batch_num -1 alpha_class alpha_unseen alpha_seen
+
+if len(sys.argv) < 9:
     print("Error: incorrect number of parameters.")
-    print("Usage: python experiment_dp_alpha_tune.py theta n_ref batch_num calib_num alpha_total lambda_weight")
+    print("Usage (tuned):  python synthetic_experiment_dp.py theta n_ref n_test calib_num alpha_total lambda_weight batch_num tuning_method_flag")
+    print("Usage (fixed):  python synthetic_experiment_dp.py theta n_ref n_test calib_num alpha_total lambda_weight batch_num -1 alpha_class alpha_unseen alpha_seen")
     quit()
 
-# 1) Parse command-line arguments
 theta = int(sys.argv[1]) # DP concentration parameter
-n_ref = int(sys.argv[2]) # number of training and calibration samples 
+n_ref = int(sys.argv[2]) # number of training and calibration samples
 n_test = int(sys.argv[3]) # number of test samples
 calib_num = int(sys.argv[4])  # number of calibration samples
 alpha_total = float(sys.argv[5])  # Total alpha budget
 lambda_weight = float(sys.argv[6])     # Tune alpha allocation using loss function, between 0 and 1
-batch_num = int(sys.argv[7]) # seed 
-tuning_method_flag = int(sys.argv[8])  # data-driven alpha allocation paramter. Which datasplit is used during cross validation? 0 for 'random', 1 for 'bernoulli', -1 for using fixed alpha allocation
+batch_num = int(sys.argv[7]) # seed
+tuning_method_flag = int(sys.argv[8])  # 0 for 'random', 1 for 'bernoulli', -1 for fixed
 
 # Convert flag to string for internal use
 if tuning_method_flag == 0:
     tuning_method = 'random'
 elif tuning_method_flag == 1:
     tuning_method = 'bernoulli'
-
-# Optional: not used in experiments. Using fixed alpha allocation. 
 elif tuning_method_flag == -1:
     tuning_method = 'fixed'
-    alpha_class_fixed = alpha_total / 3
-    alpha_unseen_fixed = alpha_total / 3
-    alpha_seen_fixed = alpha_total / 3
-
+    if len(sys.argv) != 12:
+        print("Error: fixed mode requires 3 extra arguments: alpha_class alpha_unseen alpha_seen")
+        print("Usage: python synthetic_experiment_dp.py theta n_ref n_test calib_num alpha_total lambda_weight batch_num -1 alpha_class alpha_unseen alpha_seen")
+        quit()
+    alpha_class_fixed = float(sys.argv[9])
+    alpha_unseen_fixed = float(sys.argv[10])
+    alpha_seen_fixed = float(sys.argv[11])
+    print(f"Fixed alphas: alpha_class={alpha_class_fixed}, alpha_unseen={alpha_unseen_fixed}, alpha_seen={alpha_seen_fixed}")
 else:
     print(f"Error: tuning_method must be 0 (random) or 1 (bernoulli) or -1 (using fixed alpha), got '{tuning_method_flag}'")
     quit()
@@ -438,16 +444,18 @@ def run_syn_experiment(n_ref, n_test, num_exp, batch_num):
                 splitting_method=tuning_method,  # Uses the converted string value
                 verbose=(i == 0)  # Only verbose for first experiment
             )
-        elif tuning_method_flag == -1:
+            # Extract the best loss metrics from tuning results
+            best_idx = tuning_results['avg_loss'].idxmin()
+            best_loss = tuning_results.loc[best_idx, 'avg_loss']
+            best_normalized_size = tuning_results.loc[best_idx, 'avg_normalized_size']
+            best_joker_waste = tuning_results.loc[best_idx, 'avg_joker_waste']
+        else:
             alpha_class_tuned = alpha_class_fixed
             alpha_unseen_tuned = alpha_unseen_fixed
             alpha_seen_tuned = alpha_seen_fixed
-
-        # Extract the best loss metrics from tuning results
-        best_idx = tuning_results['avg_loss'].idxmin()
-        best_loss = tuning_results.loc[best_idx, 'avg_loss']
-        best_normalized_size = tuning_results.loc[best_idx, 'avg_normalized_size']
-        best_joker_waste = tuning_results.loc[best_idx, 'avg_joker_waste']
+            best_loss = np.nan
+            best_normalized_size = np.nan
+            best_joker_waste = np.nan
 
         # Analyze with tuned alphas
         results = analyze_data(

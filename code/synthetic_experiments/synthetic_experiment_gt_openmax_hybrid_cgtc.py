@@ -24,13 +24,12 @@ from testing import select_beta_cv
 #####################
 
 # Parse command-line arguments
-# Tuned mode:  python synthetic_experiment_openmax_cgtc.py theta n_ref n_test calib_num alpha_total lambda_weight batch_num tuning_method_flag
-# Fixed mode:  python synthetic_experiment_openmax_cgtc.py theta n_ref n_test calib_num alpha_total lambda_weight batch_num -1 alpha_class alpha_unseen alpha_seen
+# Fixed mode:  python synthetic_experiment_gt_openmax_hybrid_cgtc.py theta n_ref n_test calib_num alpha_total lambda_weight batch_num -1 alpha_class alpha_unseen alpha_seen
 
 if len(sys.argv) < 9:
     print("Error: incorrect number of parameters.")
-    print("Usage (tuned):  python synthetic_experiment_openmax_cgtc.py theta n_ref n_test calib_num alpha_total lambda_weight batch_num tuning_method_flag")
-    print("Usage (fixed):  python synthetic_experiment_openmax_cgtc.py theta n_ref n_test calib_num alpha_total lambda_weight batch_num -1 alpha_class alpha_unseen alpha_seen")
+    print("Usage (tuned):  python synthetic_experiment_gt_openmax_hybrid_cgtc.py theta n_ref n_test calib_num alpha_total lambda_weight batch_num tuning_method_flag")
+    print("Usage (fixed):  python synthetic_experiment_gt_openmax_hybrid_cgtc.py theta n_ref n_test calib_num alpha_total lambda_weight batch_num -1 alpha_class alpha_unseen alpha_seen")
     quit()
 
 theta = int(sys.argv[1])        # DP concentration parameter
@@ -51,7 +50,7 @@ elif tuning_method_flag == -1:
     tuning_method = 'fixed'
     if len(sys.argv) != 12:
         print("Error: fixed mode requires 3 extra arguments: alpha_class alpha_unseen alpha_seen")
-        print("Usage: python synthetic_experiment_openmax_cgtc.py theta n_ref n_test calib_num alpha_total lambda_weight batch_num -1 alpha_class alpha_unseen alpha_seen")
+        print("Usage: python synthetic_experiment_gt_openmax_hybrid_cgtc.py theta n_ref n_test calib_num alpha_total lambda_weight batch_num -1 alpha_class alpha_unseen alpha_seen")
         quit()
     alpha_class_fixed = float(sys.argv[9])
     alpha_unseen_fixed = float(sys.argv[10])
@@ -90,7 +89,7 @@ print(f"batch_num: {batch_num}")
 #####################
 
 output_file = (
-    f"results/dp_openmax_cgtc/"
+    f"results/dp_gt_openmax_hybrid_cgtc/"
     f"dp_"
     f"theta{theta}_"
     f"nref{n_ref}_"
@@ -132,9 +131,10 @@ data_dist = DataDistribution_1(label_dist, feature_dist)
 
 n_neighbors = 5
 
-# OpenSetKNNOpenMax: KNN + Weibull revision to replace Good-Turing for unseen labels
-classifier_knn = black_boxes.OpenSetKNNOpenMax(
+# OpenSetKNNwithGTOpenMaxHybrid: KNN for p_seen + GT-anchored OpenMax modulation for p_unseen
+classifier_gt_openmax = black_boxes.OpenSetKNNwithGTOpenMaxHybrid(
     calibrate=False,
+    # KNN params (same as OpenSetKNN baseline)
     n_neighbors=n_neighbors,
     weights='distance',
     algorithm='auto',
@@ -145,20 +145,15 @@ classifier_knn = black_boxes.OpenSetKNNOpenMax(
     n_jobs=-1,
     clip_proba_factor=1e-20,
     noise_scale=1e-6,
-    tail_size=20,
-    alpha_rank=None
-)
-
-# OpenSetMLPOpenMax: MLP + Weibull revision on penultimate-layer activations
-classifier_mlp = black_boxes.OpenSetMLPOpenMax(
+    # MLP OpenMax params (same as OpenSetMLPOpenMax)
     hidden_layer_sizes=(64, 32),
     activation='relu',
     max_iter=500,
-    random_state=42,
-    clip_proba_factor=1e-20,
-    noise_scale=1e-6,
+    mlp_random_state=42,
     tail_size=20,
-    alpha_rank=None
+    alpha_rank=10,
+    # Hybrid modulation params
+    p_unseen_cap=0.5
 )
 
 # OCC model for computing feature-dependent GT p-values (XGT)
@@ -168,7 +163,7 @@ occ = LocalOutlierFactor(n_neighbors=1, novelty=True)
 # Methods to tune   #
 #####################
 
-# For alpha tuning, use random splitting full with the KNN classifier
+# For alpha tuning, use random splitting full with the hybrid classifier
 methods_list_tuning = {
     'Method (random splitting full)': get_preliminary_sets_naive_full,
 }
@@ -215,7 +210,7 @@ def analyze_data(X_ref, Y_ref, X_test, Y_test, classifiers_dict,
                  alpha_unseen, alpha_seen, alpha_class,
                  occ, calib_size, random_state=2024):
     """
-    Run each OpenMax-CGTC classifier through the full CGTC pipeline
+    Run each classifier through the full CGTC pipeline
     (preliminary sets + dual hypothesis testing) and evaluate.
     """
     freq_one_prop = calculate_freq_one_proportion(Y_ref)
@@ -333,8 +328,7 @@ def run_experiment(n_ref, n_test, num_exp, batch_num):
     np.random.seed(batch_num)
 
     classifiers_dict = {
-        'OpenMax-KNN': classifier_knn,
-        'OpenMax-MLP': classifier_mlp,
+        'GT-OpenMax-Hybrid': classifier_gt_openmax,
     }
 
     all_results = pd.DataFrame()
@@ -369,7 +363,7 @@ def run_experiment(n_ref, n_test, num_exp, batch_num):
                 lambda_weight=lambda_weight,
                 n_splits=10,
                 alpha_step=0.005,
-                classifier=classifier_knn,
+                classifier=classifier_gt_openmax,
                 occ=occ,
                 calibration_probability=calib_prob_adjusted,
                 calib_size=calib_size,

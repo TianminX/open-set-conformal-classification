@@ -52,9 +52,15 @@ df_openmax_summary <- df_openmax %>%
     # Empty proportion
     mean_prop_emp = mean(`Prop empty`, na.rm = TRUE),
     se_prop_emp = sd(`Prop empty`, na.rm = TRUE)/sqrt(n()),
-    # Proportion unseen (relative to ref)
+    # Proportion unseen (relative to ref = train + calib)
     mean_prop_unseen = mean(prop_unseen_test, na.rm = TRUE),
     se_prop_unseen = sd(prop_unseen_test, na.rm = TRUE)/sqrt(n()),
+    # Proportion unseen in train only
+    mean_prop_unseen_train = mean(prop_unseen_train, na.rm = TRUE),
+    se_prop_unseen_train = sd(prop_unseen_train, na.rm = TRUE)/sqrt(n()),
+    # Proportion in calib but not in train (derived per row, then summarized)
+    mean_prop_calib_not_train = mean(prop_unseen_train - prop_unseen_test, na.rm = TRUE),
+    se_prop_calib_not_train = sd(prop_unseen_train - prop_unseen_test, na.rm = TRUE)/sqrt(n()),
     .groups = "drop"
   ) %>%
   mutate(
@@ -76,7 +82,11 @@ df_openmax_summary <- df_openmax %>%
     lci_prop_emp = mean_prop_emp - 1.96*se_prop_emp,
     uci_prop_emp = mean_prop_emp + 1.96*se_prop_emp,
     lci_prop_unseen = mean_prop_unseen - 1.96*se_prop_unseen,
-    uci_prop_unseen = mean_prop_unseen + 1.96*se_prop_unseen
+    uci_prop_unseen = mean_prop_unseen + 1.96*se_prop_unseen,
+    lci_prop_unseen_train = mean_prop_unseen_train - 1.96*se_prop_unseen_train,
+    uci_prop_unseen_train = mean_prop_unseen_train + 1.96*se_prop_unseen_train,
+    lci_prop_calib_not_train = mean_prop_calib_not_train - 1.96*se_prop_calib_not_train,
+    uci_prop_calib_not_train = mean_prop_calib_not_train + 1.96*se_prop_calib_not_train
   )
 
 # Filter data for analysis
@@ -116,13 +126,19 @@ df_joker <- df_openmax_analysis %>%
 df_unseen <- df_openmax_analysis %>%
   select(theta, method, mean_prop_unseen, lci_prop_unseen, uci_prop_unseen) %>%
   rename(mean = mean_prop_unseen, lci = lci_prop_unseen, uci = uci_prop_unseen) %>%
-  mutate(metric = "Unseen Test Label Proportion")
+  mutate(metric = "Unseen in Ref (Train+Calib)")
 
-df_combined_four <- bind_rows(df_coverage, df_size, df_joker, df_unseen) %>%
+df_calib_not_train <- df_openmax_analysis %>%
+  select(theta, method, mean_prop_calib_not_train, lci_prop_calib_not_train, uci_prop_calib_not_train) %>%
+  rename(mean = mean_prop_calib_not_train, lci = lci_prop_calib_not_train, uci = uci_prop_calib_not_train) %>%
+  mutate(metric = "In Calib but not Train")
+
+df_combined_four <- bind_rows(df_coverage, df_size, df_joker, df_unseen, df_calib_not_train) %>%
   mutate(metric = factor(
     metric,
     levels = c("Coverage", "Prediction Set Size",
-               "Joker Proportion", "Unseen Test Label Proportion")
+               "Joker Proportion", "Unseen in Ref (Train+Calib)",
+               "In Calib but not Train")
   ))
 
 p_openmax_four_panel <- ggplot(df_combined_four,
@@ -130,7 +146,7 @@ p_openmax_four_panel <- ggplot(df_combined_four,
   geom_line(linewidth = 1.2) +
   geom_point(size = 3) +
   geom_errorbar(aes(ymin = lci, ymax = uci), width = 20, linewidth = 1) +
-  facet_wrap(~ metric, scales = "free_y", nrow = 2, ncol = 2) +
+  facet_wrap(~ metric, scales = "free_y", nrow = 2, ncol = 3) +
   ggh4x::facetted_pos_scales(
     y = list(
       metric == "Prediction Set Size" ~ scale_y_log10()
@@ -161,7 +177,7 @@ p_openmax_four_panel <- ggplot(df_combined_four,
 
 print(p_openmax_four_panel)
 
-ggsave("dp_openmax_four_panel.pdf", p_openmax_four_panel, width = 14, height = 8, units = "in")
+ggsave("dp_openmax_five_panel.pdf", p_openmax_four_panel, width = 18, height = 8, units = "in")
 
 # ============================================================
 # Conditional coverage: Seen vs Unseen (faceted)
