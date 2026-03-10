@@ -2,6 +2,8 @@ import numpy as np
 import pandas as pd
 from tqdm import tqdm
 from sklearn.neighbors import LocalOutlierFactor
+from sklearn.ensemble import IsolationForest
+from sklearn.svm import OneClassSVM
 from tqdm import tqdm
 from functools import partial
 import sys
@@ -74,7 +76,10 @@ print(f"alpha tuning_method: {tuning_method} (flag={tuning_method_flag})")
 # If default_beta is not none, use it. If default_beta is None, use optimal weights
 default_beta = 1.6
 # If beta_cv is true, use CV to choose beta
-beta_cv = False
+beta_cv = True
+
+# One-class classifier choice: 'lof', 'iforest', 'ocsvm'
+occ_name = 'lof'
 
 
 # Print parsed parameters
@@ -95,10 +100,14 @@ print(f"batch_num: {batch_num}")
 
 
 
-# Output file - Updated filename format 
+# Output file - Updated filename format
+beta_label = "betacv" if beta_cv else f"beta{default_beta}"
 output_file = (
-    f"results/dp_tuned_mixed_labels/"
+    # f"results/dp_tuned_mixed_labels/"
+    f"results/dp_tuned_mixed_labels/rebuttal/"
     f"dp_"
+    f"occ{occ_name}_"
+    f"{beta_label}_"
     f"theta{theta}_"
     f"nref{n_ref}_"
     f"ntest{n_test}_"
@@ -157,7 +166,18 @@ classifier = black_boxes.OpenSetKNN(
 )
 
 # One-class classification model for computing feature-dependent GT p-values
-occ = LocalOutlierFactor(n_neighbors=1, novelty=True)
+
+occ_choices = {
+    'lof':     LocalOutlierFactor(n_neighbors=1, novelty=True),
+    'iforest': IsolationForest(n_estimators=10, contamination='auto', random_state=batch_num),
+    'ocsvm':   OneClassSVM(kernel='rbf', nu = 0.05),
+}
+
+if occ_name not in occ_choices:
+    print(f"Error: occ_name must be one of {list(occ_choices.keys())}, got '{occ_name}'")
+    quit()
+
+occ = occ_choices[occ_name]
 
 
 
@@ -350,6 +370,10 @@ def analyze_data(X_ref, Y_ref, X_test, Y_test, methods_list,
             new_results['alpha_class'] = alpha_class
             new_results['alpha_unseen'] = alpha_unseen
             new_results['alpha_seen'] = alpha_seen
+            new_results['occ'] = occ_name
+
+            if beta_cv:
+                new_results['beta'] = best_beta
 
             # Append the results to the DataFrame
             results_df = pd.concat([results_df, new_results])
