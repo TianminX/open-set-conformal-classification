@@ -1204,6 +1204,88 @@ class OpenMaxKNN:
         return _openmax_revision(p_seen, w)
 
 
+###############################################################################
+# GT + KNN  (KNN classifier + Good-Turing estimator for unknown class)
+###############################################################################
+
+class GTOpenSetKNN:
+    """KNN classifier that appends a Good-Turing unknown-class column.
+
+    predict_proba returns an (n, K+1) matrix where columns 0..K-1 are the
+    KNN seen-class probabilities scaled by (1 - p_gt) and column K is the
+    constant GT probability p_gt = (1 + n_singletons) / (1 + n_train),
+    capped at 0.5.
+    """
+
+    def __init__(self, calibrate=False,
+                 n_neighbors=5,
+                 weights='uniform',
+                 algorithm='auto',
+                 leaf_size=30,
+                 p=2,
+                 metric='minkowski',
+                 metric_params=None,
+                 n_jobs=None,
+                 clip_proba_factor=0.1):
+        self.model = KNeighborsClassifier(
+            n_neighbors=n_neighbors,
+            weights=weights,
+            algorithm=algorithm,
+            leaf_size=leaf_size,
+            p=p,
+            metric=metric,
+            metric_params=metric_params,
+            n_jobs=n_jobs
+        )
+        self.calibrate = calibrate
+        self.factor = clip_proba_factor
+        self.calibrated = None
+
+    def fit(self, X, y):
+        self.classes_ = np.unique(y)
+        self.num_classes = len(self.classes_)
+        self.n_train = len(y)
+        self.model_fit = self.model.fit(X, y)
+
+        unique_labels, counts = np.unique(y, return_counts=True)
+        self.n_singletons = np.sum(counts == 1)
+
+        if self.calibrate:
+            self.calibrated = calibration.CalibratedClassifierCV(
+                self.model_fit, method='sigmoid', cv=10
+            )
+            self.calibrated.fit(X, y)
+        else:
+            self.calibrated = None
+
+        return copy.deepcopy(self)
+
+    def predict(self, X):
+        return self.model_fit.predict(X)
+
+    def predict_proba(self, X):
+        if len(X.shape) == 1:
+            X = X.reshape((1, -1))
+
+        if self.calibrated is None:
+            p_seen = self.model_fit.predict_proba(X)
+        else:
+            p_seen = self.calibrated.predict_proba(X)
+
+        p_seen = np.clip(p_seen, self.factor / self.num_classes, 1.0)
+        p_seen = p_seen / p_seen.sum(axis=1)[:, None]
+
+        n = p_seen.shape[0]
+
+        p_gt = (1 + self.n_singletons) / (1 + self.n_train)
+        p_gt = min(p_gt, 0.5)
+
+        p_seen_scaled = p_seen * (1.0 - p_gt)
+        p_unknown = np.full((n, 1), p_gt)
+
+        return np.hstack([p_seen_scaled, p_unknown])
+
+
 class LogisticRegressionUnseenCalib:
     def __init__(self, calibrate=False, clip_proba_factor=0.1, multi_class = 'multinomial', solver='lbfgs'):
         """
