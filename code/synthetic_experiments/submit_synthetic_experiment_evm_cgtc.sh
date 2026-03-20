@@ -25,7 +25,7 @@ BATCH_LIST=$(seq 1 10)
 TUNING_METHOD_LIST=(0)
 
 # SLURM parameters
-MEMO=16G                             # Memory required
+MEMO=4G                              # Memory required
 TIME=00-10:00:00                     # Time required
 
 # SBATCH command template

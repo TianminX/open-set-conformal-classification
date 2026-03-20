@@ -2277,6 +2277,130 @@ def _fit_weibull_margin(distances, tail_size):
         return None
 
 
+class EVMKNN:
+    """
+    EVM algorithm adapted for KNN — returns (n, K+1) probabilities.
+
+    Analogous to OpenMaxKNN but uses between-class margin distances instead
+    of within-class centroid distances for Weibull fitting.
+
+    Training:
+      1. Fit KNN.
+      2. For each class k, compute margin distances: distance from each
+         class-k sample to its nearest other-class sample.
+      3. Fit Weibull on the smallest margin distances per class.
+
+    Prediction for x:
+      1. Base KNN probabilities p_k(x), k = 1..K.
+      2. For each class k, d_k(x) = distance to nearest training sample in k.
+      3. inclusion_k(x) = 1 - WeibullCDF_k(d_k(x)).
+      4. p_open(x) = 1 - max_k inclusion_k(x).
+      5. Return (n, K+1) via revision: seen probs scaled by (1-p_open),
+         last column = p_open.
+    """
+
+    def __init__(self,
+                 n_neighbors=5,
+                 weights='distance',
+                 algorithm='auto',
+                 leaf_size=30,
+                 p=2,
+                 metric='minkowski',
+                 metric_params=None,
+                 n_jobs=None,
+                 clip_proba_factor=1e-20,
+                 tail_size=20):
+        self.model = KNeighborsClassifier(
+            n_neighbors=n_neighbors, weights=weights, algorithm=algorithm,
+            leaf_size=leaf_size, p=p, metric=metric,
+            metric_params=metric_params, n_jobs=n_jobs
+        )
+        self.factor = clip_proba_factor
+        self.tail_size = tail_size
+
+    def fit(self, X, y):
+        self.classes_ = np.unique(y)
+        self.num_classes = len(self.classes_)
+        self.n_train = len(y)
+        self.model_fit = self.model.fit(X, y)
+
+        # Store training data for nearest-neighbour lookup at prediction time
+        self.X_train_ = X.copy()
+        self.y_train_ = y.copy()
+
+        # Per-class: store sample indices and fit Weibull on margin distances
+        self.class_indices_ = {}
+        self.weibull_margin_ = {}
+        all_margin_dists = []
+
+        for k in self.classes_:
+            mask_k = (y == k)
+            self.class_indices_[k] = np.where(mask_k)[0]
+            X_k = X[mask_k]
+            X_other = X[~mask_k]
+
+            if len(X_k) < 1 or len(X_other) < 1:
+                self.weibull_margin_[k] = None
+                continue
+
+            dists_to_other = cdist(X_k, X_other)
+            margin_dists = dists_to_other.min(axis=1)
+            all_margin_dists.extend(margin_dists[margin_dists > 0].tolist())
+            self.weibull_margin_[k] = _fit_weibull_margin(
+                margin_dists, self.tail_size
+            )
+
+        # Pooled fallback
+        self.pooled_margin_weibull_ = None
+        if all_margin_dists:
+            pooled = np.array(all_margin_dists)
+            n_tail = min(self.tail_size * 10, len(pooled))
+            self.pooled_margin_weibull_ = _fit_weibull_margin(pooled, n_tail)
+
+        return copy.deepcopy(self)
+
+    def predict(self, X):
+        return self.model_fit.predict(X)
+
+    def predict_proba(self, X, y_calib=None):
+        """Return (n, K+1) probability matrix.  y_calib is unused."""
+        if X.ndim == 1:
+            X = X.reshape(1, -1)
+
+        n = X.shape[0]
+        K = self.num_classes
+
+        # Base KNN probabilities
+        p_seen = self.model_fit.predict_proba(X)
+        p_seen = np.clip(p_seen, self.factor / K, 1.0)
+        p_seen = p_seen / p_seen.sum(axis=1)[:, None]
+
+        # EVM inclusion probabilities per class
+        inclusion = np.zeros((n, K))
+        for j, k in enumerate(self.classes_):
+            idx_k = self.class_indices_[k]
+            X_k = self.X_train_[idx_k]
+
+            dists = cdist(X, X_k)
+            d_min = dists.min(axis=1)
+
+            params = self.weibull_margin_.get(k) or self.pooled_margin_weibull_
+            if params is not None:
+                c, scale = params
+                cdf_val = weibull_min.cdf(d_min, c, loc=0, scale=scale)
+                inclusion[:, j] = 1.0 - cdf_val
+            else:
+                inclusion[:, j] = 0.5
+
+        p_open = 1.0 - inclusion.max(axis=1)
+        p_open = np.clip(p_open, 0.0, 1.0)
+
+        # Build (n, K+1): scale seen probs by (1-p_open), last col = p_open
+        p_revised = p_seen * (1.0 - p_open)[:, None]
+        p_unknown = p_open[:, None]
+        return np.hstack([p_revised, p_unknown])
+
+
 class OpenSetKNNEVM:
     """
     KNN classifier that uses an EVM (Extreme Value Machine) approach to
@@ -2474,8 +2598,7 @@ class OpenSetKNNEVM:
             # Compute per-sample p_open via EVM
             p_open = self._compute_p_open(X, p_seen)
 
-            # Cap p_open to avoid degenerate seen-class probabilities
-            p_open = np.clip(p_open, 0.0, 0.5)
+            p_open = np.clip(p_open, 0.0, 1.0)
 
             for i in range(n):
                 # Distribute p_open uniformly across unseen labels + noise
