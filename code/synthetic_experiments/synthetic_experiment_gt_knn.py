@@ -245,8 +245,12 @@ def analyze_data_gt_knn(X_ref, Y_ref, X_test, Y_test, methods_list,
             seen_train_coverage = np.nan
 
         # --- Compute calib-not-train metrics ---
-        # Test points whose label is in calibration but not in training
+        # Labels (classes) that appear in calibration but not in training
         seen_labels_calib = np.unique(Y_calib)
+        labels_calib_not_train = set(seen_labels_calib) - set(seen_labels_train)
+        num_labels_calib_not_train = len(labels_calib_not_train)
+
+        # Test points whose label is in calibration but not in training
         calib_not_train_mask = (~np.isin(Y_test, seen_labels_train)) & np.isin(Y_test, seen_labels_calib)
         prop_calib_not_train = np.mean(calib_not_train_mask)
         num_calib_not_train = np.sum(calib_not_train_mask)
@@ -276,6 +280,7 @@ def analyze_data_gt_knn(X_ref, Y_ref, X_test, Y_test, methods_list,
         new_results['alpha_seen'] = 0.0
         new_results['prop_calib_not_train'] = prop_calib_not_train
         new_results['num_calib_not_train'] = int(num_calib_not_train)
+        new_results['num_labels_calib_not_train'] = num_labels_calib_not_train
         new_results['Coverage (joker_train)'] = coverage_joker_train
         new_results['Unseen Coverage (joker_train)'] = unseen_train_coverage
         new_results['Seen Coverage (joker_train)'] = seen_train_coverage

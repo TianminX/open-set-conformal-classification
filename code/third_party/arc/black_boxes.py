@@ -2251,6 +2251,255 @@ class OpenSetKNNOpenMax:
         return new_prob
 
 
+###############################################################################
+# EVM-based open-set KNN
+###############################################################################
+
+def _fit_weibull_margin(distances, tail_size):
+    """Fit a Weibull distribution on the *tail_size* smallest distances.
+
+    These are margin distances (nearest other-class neighbours), so the
+    interesting tail is the *left* (small) tail — unlike OpenMax which uses
+    the right (large) tail of within-class distances.
+
+    Returns (shape, scale) or None if fitting fails.
+    """
+    if len(distances) < 2:
+        return None
+    tail = np.sort(distances)[:tail_size]
+    tail = tail[tail > 0]
+    if len(tail) < 3:
+        return None
+    try:
+        c, _, scale = weibull_min.fit(tail, floc=0)
+        return (c, scale)
+    except Exception:
+        return None
+
+
+class OpenSetKNNEVM:
+    """
+    KNN classifier that uses an EVM (Extreme Value Machine) approach to
+    estimate p_open, then distributes it uniformly across unseen calibration
+    labels — same interface as OpenSetKNNOpenMax.
+
+    Key difference from OpenMax:
+        OpenMax fits Weibull on *within-class* distances to centroid
+        (large-tail), measuring how spread out each class is.
+
+        EVM fits Weibull on *between-class* margin distances (small-tail),
+        measuring how close other-class samples get to each class.
+
+    Training:
+      1. Fit KNN.
+      2. For each class k, compute margin distances: for every sample in k,
+         find distance to nearest sample NOT in k.
+      3. Fit Weibull on the *tail_size* smallest margin distances per class.
+
+    Prediction for x:
+      1. Base KNN probabilities p_k(x), k = 1..K.
+      2. For each class k, d_k(x) = distance from x to nearest training
+         sample in class k.
+      3. Inclusion probability:
+             P(x in k) = 1 - WeibullCDF_k(d_k(x))
+         If d_k(x) is much smaller than typical margin distances, CDF is low
+         and inclusion is high; if d_k(x) is comparable to or larger than
+         margin distances, inclusion is low.
+      4. p_open(x) = 1 - max_k P(x in k).
+      5. Distribute p_open across unseen labels (same as OpenSetKNNOpenMax).
+    """
+
+    def __init__(self, calibrate=False,
+                 n_neighbors=5,
+                 weights='uniform',
+                 algorithm='auto',
+                 leaf_size=30,
+                 p=2,
+                 metric='minkowski',
+                 metric_params=None,
+                 n_jobs=None,
+                 clip_proba_factor=0.1,
+                 noise_scale=1e-6,
+                 tail_size=20):
+        self.model = KNeighborsClassifier(
+            n_neighbors=n_neighbors,
+            weights=weights,
+            algorithm=algorithm,
+            leaf_size=leaf_size,
+            p=p,
+            metric=metric,
+            metric_params=metric_params,
+            n_jobs=n_jobs
+        )
+        self.calibrate = calibrate
+        self.factor = clip_proba_factor
+        self.calibrated = None
+        self.noise_scale = noise_scale
+        self.tail_size = tail_size
+
+    def fit(self, X, y):
+        self.classes_ = np.unique(y)
+        self.num_classes = len(self.classes_)
+        self.model_fit = self.model.fit(X, y)
+        self.n_train = len(y)
+
+        if self.calibrate:
+            self.calibrated = calibration.CalibratedClassifierCV(
+                self.model_fit, method='sigmoid', cv=10
+            )
+            self.calibrated.fit(X, y)
+        else:
+            self.calibrated = None
+
+        # Store training data for nearest-neighbour lookup at prediction time
+        self.X_train_ = X.copy()
+        self.y_train_ = y.copy()
+
+        # Per-class: store sample indices and fit Weibull on margin distances
+        self.class_indices_ = {}
+        self.weibull_margin_ = {}
+        all_margin_dists = []
+
+        for k in self.classes_:
+            mask_k = (y == k)
+            self.class_indices_[k] = np.where(mask_k)[0]
+            X_k = X[mask_k]
+            X_other = X[~mask_k]
+
+            if len(X_k) < 1 or len(X_other) < 1:
+                self.weibull_margin_[k] = None
+                continue
+
+            # For each sample in class k, distance to nearest other-class sample
+            dists_to_other = cdist(X_k, X_other)          # (n_k, n_other)
+            margin_dists = dists_to_other.min(axis=1)      # (n_k,)
+            all_margin_dists.extend(margin_dists[margin_dists > 0].tolist())
+            self.weibull_margin_[k] = _fit_weibull_margin(
+                margin_dists, self.tail_size
+            )
+
+        # Pooled fallback for singleton / tiny classes
+        self.pooled_margin_weibull_ = None
+        if all_margin_dists:
+            pooled = np.array(all_margin_dists)
+            n_tail = min(self.tail_size * 10, len(pooled))
+            self.pooled_margin_weibull_ = _fit_weibull_margin(pooled, n_tail)
+
+        return copy.deepcopy(self)
+
+    def predict(self, X):
+        return self.model_fit.predict(X)
+
+    def _compute_p_open(self, X, p_seen):
+        """Compute per-sample EVM-based unknown-class probability.
+
+        For each class k we compute d_k(x) = distance from x to nearest
+        training sample in class k, then:
+            inclusion_k(x) = 1 - WeibullCDF_k(d_k(x))
+        and
+            p_open(x) = 1 - max_k inclusion_k(x)
+
+        Returns
+        -------
+        p_open : ndarray, shape (n,)
+        """
+        n = X.shape[0]
+        K = self.num_classes
+        inclusion = np.zeros((n, K))
+
+        for j, k in enumerate(self.classes_):
+            idx_k = self.class_indices_[k]
+            X_k = self.X_train_[idx_k]
+
+            # Distance from each test point to nearest training sample in k
+            dists = cdist(X, X_k)                # (n, n_k)
+            d_min = dists.min(axis=1)             # (n,)
+
+            params = self.weibull_margin_.get(k) or self.pooled_margin_weibull_
+            if params is not None:
+                c, scale = params
+                cdf_val = weibull_min.cdf(d_min, c, loc=0, scale=scale)
+                inclusion[:, j] = 1.0 - cdf_val
+            else:
+                # No Weibull available — fall back to 0.5
+                inclusion[:, j] = 0.5
+
+        p_open = 1.0 - inclusion.max(axis=1)
+        return p_open
+
+    def predict_proba(self, X, y_calib=None):
+        """
+        Predict class probabilities using EVM p_open for unseen labels.
+
+        Same interface as OpenSetKNNOpenMax.predict_proba.
+        """
+        if len(X.shape) == 1:
+            X = X.reshape((1, -1))
+
+        # Base KNN probabilities for seen classes
+        if self.calibrated is None:
+            p_seen = self.model_fit.predict_proba(X)
+        else:
+            p_seen = self.calibrated.predict_proba(X)
+
+        p_seen = np.clip(p_seen, self.factor / self.num_classes, 1.0)
+        p_seen = p_seen / p_seen.sum(axis=1)[:, None]
+
+        n, K = p_seen.shape
+
+        # Determine unseen labels
+        if y_calib is not None:
+            all_classes_set = set(self.classes_).union(set(np.unique(y_calib)))
+            self.full_classes = np.array(sorted(all_classes_set))
+            self.train_to_full_idx = {}
+            for i, cls in enumerate(self.classes_):
+                full_idx = np.where(self.full_classes == cls)[0][0]
+                self.train_to_full_idx[i] = full_idx
+        else:
+            if not hasattr(self, 'full_classes'):
+                return p_seen
+
+        num_full_classes = len(self.full_classes)
+        new_prob = np.zeros((n, num_full_classes))
+
+        # Identify unseen class indices
+        unseen_mask = np.ones(num_full_classes, dtype=bool)
+        for train_class in self.classes_:
+            idx = np.where(self.full_classes == train_class)[0][0]
+            unseen_mask[idx] = False
+        unseen_indices = np.where(unseen_mask)[0]
+        num_unseen = len(unseen_indices)
+
+        if num_unseen > 0:
+            # Compute per-sample p_open via EVM
+            p_open = self._compute_p_open(X, p_seen)
+
+            # Cap p_open to avoid degenerate seen-class probabilities
+            p_open = np.clip(p_open, 0.0, 0.5)
+
+            for i in range(n):
+                # Distribute p_open uniformly across unseen labels + noise
+                base_unseen = p_open[i] / num_unseen
+                for unseen_idx in unseen_indices:
+                    noise = np.random.uniform(-self.noise_scale, self.noise_scale)
+                    new_prob[i, unseen_idx] = base_unseen * (1 + noise)
+
+                # Scale seen-class probabilities to fill remaining mass
+                remaining = 1.0 - p_open[i]
+                for train_idx, train_class in enumerate(self.classes_):
+                    full_idx = np.where(self.full_classes == train_class)[0][0]
+                    new_prob[i, full_idx] = p_seen[i, train_idx] * remaining
+
+            # Final renormalization
+            new_prob = new_prob / new_prob.sum(axis=1)[:, None]
+        else:
+            for train_idx, train_class in enumerate(self.classes_):
+                full_idx = np.where(self.full_classes == train_class)[0][0]
+                new_prob[:, full_idx] = p_seen[:, train_idx]
+
+        return new_prob
+
+
 class OpenSetMLPOpenMax:
     """
     MLP classifier that uses OpenMax-style Weibull revision on penultimate-layer
