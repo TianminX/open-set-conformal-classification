@@ -74,7 +74,7 @@ os.makedirs(os.path.dirname(output_file), exist_ok=True)
 #####################
 
 num_features = 3
-sigma = 0.000005
+sigma = 1e-4
 
 class DataDistribution_1:
     def __init__(self, label_dist, feature_dist):

@@ -2598,7 +2598,8 @@ class OpenSetKNNEVM:
             # Compute per-sample p_open via EVM
             p_open = self._compute_p_open(X, p_seen)
 
-            p_open = np.clip(p_open, 0.0, 1.0)
+            # Cap p_open to avoid degenerate seen-class probabilities
+            p_open = np.clip(p_open, 0.0, 0.5)
 
             for i in range(n):
                 # Distribute p_open uniformly across unseen labels + noise

@@ -152,7 +152,7 @@ methods_list = {
 # dimension of feature X
 num_features = 3
 # variance of the shifted normal of the feature distribution (around labels from DP)
-sigma = 0.000005
+sigma = 1e-4
 
 # Number of neighbors to use in KNN
 n_neighbors = 5
