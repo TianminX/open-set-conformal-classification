@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # List of different theta values to experiment with
-THETA_LIST=(12 25 50 100 200 300 400 500 600 700 800 900 1000)
+THETA_LIST=(12 25 50 100 200 300 400 500 600 700 800 900 1000 1100 1200 1300 1400 1500)
 
 # List of different n_ref values
 N_REF_LIST=(2000)
