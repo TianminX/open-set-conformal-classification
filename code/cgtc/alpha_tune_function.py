@@ -721,7 +721,8 @@ def tune_alpha_allocation_loss_all_optimized(
         random_state=2024,
         beta=1.6,
         splitting_method='bernoulli',
-        verbose=True
+        verbose=True,
+        adjust_alpha=False
 ):
     """
     Optimized version that caches baseline sets and preliminary sets.
@@ -734,6 +735,11 @@ def tune_alpha_allocation_loss_all_optimized(
     1. Cache baseline sets (computed once per fold with alpha_total)
     2. Cache preliminary sets for each (fold, alpha_class) combination
     3. Reuse cached values when evaluating different alpha_old/alpha_new combinations
+
+    If adjust_alpha=True, each candidate α_class is inflated per fold by the
+    Good-Turing missing mass correction: α_class_adj = α_class / (1 - μ_hat),
+    where μ_hat = M_1 / n (singletons / fold size). The grid search is over the
+    *unadjusted* α_class values, and the returned best α_class is unadjusted.
     """
 
     def _alpha_grid(max_alpha_class: float, start=0.01, step=None, ndigits=3):
@@ -746,6 +752,21 @@ def tune_alpha_allocation_loss_all_optimized(
         k = int(math.floor((max_alpha_class - start) / step + 1e-12))
         grid = start + step * np.arange(k + 1, dtype=float)
         return np.round(grid, ndigits)
+
+    def _compute_mu_hat(Y):
+        """Good-Turing missing mass estimate: M_1 / n. Returns 0 if degenerate."""
+        n = len(Y)
+        if n == 0:
+            return 0.0
+        _, counts = np.unique(Y, return_counts=True)
+        mu = np.sum(counts == 1) / n
+        return 0.0 if mu >= 1.0 else mu
+
+    def _adjust_ac(alpha, mu_hat):
+        """Inflate alpha by 1/(1 - mu_hat), capped at 1.0."""
+        if mu_hat <= 0.0:
+            return alpha
+        return min(alpha / (1.0 - mu_hat), 1.0)
 
     # Validate splitting_method parameter
     if splitting_method not in ['bernoulli', 'random']:
@@ -780,6 +801,9 @@ def tune_alpha_allocation_loss_all_optimized(
         # Get unique labels from training set
         seen_labels = np.unique(Y_train)
 
+        # Compute per-fold missing mass estimate for alpha adjustment
+        fold_mu_hat = _compute_mu_hat(Y_train) if adjust_alpha else 0.0
+
         # Compute baseline sets with full alpha_total
         if splitting_method == 'bernoulli':
             baseline_sets = get_preliminary_sets_Bernoulli(
@@ -809,7 +833,8 @@ def tune_alpha_allocation_loss_all_optimized(
             'X_train': X_train,
             'Y_train': Y_train,
             'X_val': X_val,
-            'Y_val': Y_val
+            'Y_val': Y_val,
+            'mu_hat': fold_mu_hat
         }
 
     # Step 2: Collect all unique alpha_class values we'll test (fixed grid: start=0.01, step=0.005)
@@ -824,11 +849,16 @@ def tune_alpha_allocation_loss_all_optimized(
     all_alpha_class_values = sorted(list(all_alpha_class_values))
 
     # Step 3: Precompute preliminary sets for each (fold, alpha_class) combination
+    # When adjust_alpha=True, the effective alpha used to build sets differs per fold
+    # (alpha_class_adj = alpha_class / (1 - mu_hat_fold)), so we cache by (alpha_class, fold_idx).
     prelim_cache = {}  # prelim_cache[alpha_class][fold_idx] = preliminary_sets
 
     if verbose:
         total_unique = len(all_alpha_class_values)
         tqdm.write(f"Precomputing preliminary sets for {total_unique} unique α_class values...")
+        if adjust_alpha:
+            fold_mu_hats = [baseline_cache[fi]['mu_hat'] for fi in range(n_splits)]
+            tqdm.write(f"Missing mass correction ON: per-fold μ_hat in [{min(fold_mu_hats):.4f}, {max(fold_mu_hats):.4f}]")
 
     for alpha_class in tqdm(all_alpha_class_values, desc="Caching preliminary sets", disable=not verbose):
         prelim_cache[alpha_class] = {}
@@ -836,11 +866,16 @@ def tune_alpha_allocation_loss_all_optimized(
         for fold_idx in range(n_splits):
             fold_data = baseline_cache[fold_idx]
 
-            # Compute preliminary sets for this alpha_class
+            # Apply missing mass adjustment if enabled
+            alpha_prime_eff = float(alpha_class)
+            if adjust_alpha:
+                alpha_prime_eff = _adjust_ac(alpha_prime_eff, fold_data['mu_hat'])
+
+            # Compute preliminary sets for this (possibly adjusted) alpha_class
             if splitting_method == 'bernoulli':
                 prelim_sets = get_preliminary_sets_Bernoulli(
                     fold_data['X_train'], fold_data['Y_train'], fold_data['X_val'],
-                    alpha_prime=float(alpha_class),
+                    alpha_prime=alpha_prime_eff,
                     black_box=classifier,
                     calibration_probability=calibration_probability,
                     random_state=random_state + fold_idx
@@ -848,7 +883,7 @@ def tune_alpha_allocation_loss_all_optimized(
             else:  # random
                 prelim_sets = get_preliminary_sets_naive(
                     fold_data['X_train'], fold_data['Y_train'], fold_data['X_val'],
-                    alpha_prime=float(alpha_class),
+                    alpha_prime=alpha_prime_eff,
                     black_box=classifier,
                     calib_size=calib_size,
                     random_state=random_state + fold_idx

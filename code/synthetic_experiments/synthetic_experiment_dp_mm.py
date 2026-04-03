@@ -505,7 +505,8 @@ def run_syn_experiment(n_ref, n_test, num_exp, batch_num):
                 random_state=current_state,
                 beta=None,
                 splitting_method=tuning_method,  # Uses the converted string value
-                verbose=(i == 0)  # Only verbose for first experiment
+                verbose=(i == 0),  # Only verbose for first experiment
+                adjust_alpha=adjust_alpha
             )
             # Extract the best loss metrics from tuning results
             best_idx = tuning_results['avg_loss'].idxmin()
