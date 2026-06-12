@@ -3,11 +3,11 @@
 # Submit SLURM jobs for the CV-tuned plug-in missing-mass allocation experiment.
 # One job per parameter combination; jobs whose output CSV already exists are skipped.
 
-# List of different theta values to experiment with
-THETA_LIST=(12 25 50 100 200 300 400 500 600 700 800 900 1000 1100 1200 1300 1400 1500)
+# Fixed theta for the asymptotic regime (we vary n_ref instead)
+THETA_LIST=(500)
 
-# List of different n_ref values
-N_REF_LIST=(2000)
+# Reference sizes, log-spaced from 1000 to 100000 (asymptotic regime)
+N_REF_LIST=(1000 2000 5000 10000 20000 50000 100000)
 
 # List of n_test values
 N_TEST_LIST=(1000)
