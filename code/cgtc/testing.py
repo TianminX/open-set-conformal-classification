@@ -5,6 +5,22 @@ from sklearn.model_selection import KFold
 from tqdm import tqdm
 
 
+def psi0_gt(Y_ref):
+    """Plug-in Good-Turing scalar psi0^GT = (1 + M1) / (1 + n),
+    where M1 is the number of singleton labels in Y_ref and n = len(Y_ref).
+
+    This is the single source of truth for the Good-Turing missing-mass
+    estimate mu_hat used by the plug-in budget allocation in
+    alpha_tune_plugin.py. It matches the deterministic GT p-value computed in
+    compute_GT_pvalues_testing_new below.
+    """
+    n = len(Y_ref)
+    # Count the number of species in the reference data that appear exactly once
+    label_frequencies = np.fromiter(listToDict(Y_ref).values(), dtype=int)
+    M1 = np.sum(label_frequencies == 1)
+    return (1.0 + M1) / (1.0 + n)
+
+
 def compute_GT_pvalues_testing_new(X_ref, Y_ref, X_test):
     """Compute the Good-Turing p-values, without looking at the features
     Deterministic version
