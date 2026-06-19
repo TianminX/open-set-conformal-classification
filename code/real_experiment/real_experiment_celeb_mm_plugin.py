@@ -16,48 +16,59 @@ from arc import methods
 from arc import black_boxes
 
 sys.path.insert(0, '../cgtc/')
-from alpha_tune_function import tune_alpha_allocation_loss_all_optimized
-from conformal_methods import evaluate_prediction_sets, finalize_prediction_sets, get_preliminary_sets_naive_full, get_preliminary_sets_naive, get_preliminary_sets_benchmark, get_preliminary_sets_Bernoulli
+from conformal_methods import (
+    evaluate_prediction_sets, finalize_prediction_sets,
+    get_preliminary_sets_naive, get_preliminary_sets_benchmark,
+    get_preliminary_sets_Bernoulli,
+)
+from alpha_tune_plugin import tune_plugin_allocation_cv, compute_plugin_allocation
 from testing import select_beta_cv
 
 #####################
 # Define Parameters #
 #####################
 
-if len(sys.argv) != 11:
+# CV-tuned plug-in missing-mass allocation applied to the CelebA real data.
+# This is the real-data counterpart of synthetic_experiment_dp_mm_plugin.py.
+# The allocation (alpha_class, alpha_unseen, alpha_seen) is derived from the
+# plug-in missing-mass estimate mu_hat = (M1 + 1)/(n + 1), with the rule
+# hyperparameters (alpha_unseen cap, alpha_seen) selected by cross-validation.
+#
+# Usage:
+#   python real_experiment_celeb_mm_plugin.py n_ref n_test calib_num alpha_total \
+#          lambda_weight n_label_total k_top k_bot batch_num splitting_method_flag [grid_size]
+#   splitting_method_flag: 0 = random splitting, 1 = bernoulli splitting (for CV)
+#   grid_size: optional cap-grid size G (default 20)
+
+if len(sys.argv) < 11:
     print("Error: incorrect number of parameters.")
     print(
-        "Usage: python real_experiment_alpha_tune_three.py n_ref n_test calib_number alpha_total lambda_weight n_label_total k_top k_bot batch_num tuning_method")
-    print("tuning_method: 0 for 'random', 1 for 'bernoulli'")
+        "Usage: python real_experiment_celeb_mm_plugin.py n_ref n_test calib_num "
+        "alpha_total lambda_weight n_label_total k_top k_bot batch_num "
+        "splitting_method_flag [grid_size]")
+    print("splitting_method_flag: 0 for 'random', 1 for 'bernoulli'")
     quit()
 
 # 1) Parse command-line arguments
-n_ref = int(sys.argv[1]) # number of training and calibration samples 
-n_test = int(sys.argv[2]) # number of test samples
-calib_num = int(sys.argv[3]) # number of calibration samples
-alpha_total = float(sys.argv[4])  # Total alpha budget
-lambda_weight = float(sys.argv[5])  # Weight parameter for loss function
-n_label_total = int(sys.argv[6])  # param for using the "uniform" sampling scheme - Number of labels for uniform sampling (0 to skip)
-k_top = int(sys.argv[7])  # param for using the "top_bottom" sampling scheme - keep top k1 celebrities (0 to skip)
-k_bot = int(sys.argv[8])  # param for using the "top_bottom" sampling scheme - keep bottom k2 celebrities (0 to skip)
-batch_num = int(sys.argv[9]) # seed 
-tuning_method_flag = int(sys.argv[10])  # data-driven alpha allocation paramter. Which datasplit is used during cross validation? 0 for 'random', 1 for 'bernoulli', -1 for using fixed alpha allocation
+n_ref = int(sys.argv[1])            # number of training and calibration samples
+n_test = int(sys.argv[2])           # number of test samples
+calib_num = int(sys.argv[3])        # number of calibration samples
+alpha_total = float(sys.argv[4])    # Total alpha budget
+lambda_weight = float(sys.argv[5])  # Loss preference between set size and joker waste, in [0,1]
+n_label_total = int(sys.argv[6])    # "uniform" sampling scheme - Number of labels (0 to skip)
+k_top = int(sys.argv[7])            # "top_bottom" scheme - keep top k1 celebrities (0 to skip)
+k_bot = int(sys.argv[8])            # "top_bottom" scheme - keep bottom k2 celebrities (0 to skip)
+batch_num = int(sys.argv[9])        # seed
+splitting_method_flag = int(sys.argv[10])  # 0 for 'random', 1 for 'bernoulli' (CV split)
+grid_size = int(sys.argv[11]) if len(sys.argv) > 11 else 20  # cap-grid size G
 
-# Convert flag to string for internal use
-if tuning_method_flag == 0:
-    tuning_method = 'random'
-elif tuning_method_flag == 1:
-    tuning_method = 'bernoulli'
-
-# Optional: not used in experiments. Using fixed alpha allocation. 
-elif tuning_method_flag == -1:
-    tuning_method = 'fixed'
-    alpha_class_fixed = alpha_total / 3
-    alpha_unseen_fixed = alpha_total / 3
-    alpha_seen_fixed = alpha_total / 3
-
+if splitting_method_flag == 0:
+    splitting_method = 'random'
+elif splitting_method_flag == 1:
+    splitting_method = 'bernoulli'
 else:
-    print(f"Error: tuning_method must be 0 (random) or 1 (bernoulli) or -1 (using fixed alpha), got '{tuning_method_flag}'")
+    print(f"Error: splitting_method_flag must be 0 (random) or 1 (bernoulli), "
+          f"got '{splitting_method_flag}'")
     quit()
 
 
@@ -74,10 +85,11 @@ else:
 
 calib_size = calib_num / n_ref
 
-print(f"alpha tuning_method: {tuning_method} (flag={tuning_method_flag})")
+print(f"splitting_method: {splitting_method} (flag={splitting_method_flag})")
+print(f"plug-in CV cap-grid size G: {grid_size}")
 
-# Using power weights to combine the p-values for testing individual hypothesis for old hypothesis
-# If default_beta is not none, use it. If default_beta is None, use optimal weights
+# Using power weights to combine the p-values for testing the seen hypothesis.
+# If default_beta is not None, use it. If None, use optimal weights.
 default_beta = 1.6
 # If beta_cv is true, use CV to choose beta
 beta_cv = False
@@ -103,10 +115,11 @@ print(f"subsampling_scheme: {subsampling_scheme}")
 # Define Output Dir #
 #####################
 
-# Output file - Updated filename format to include n_label_total
+beta_label = "betacv" if beta_cv else f"beta{default_beta}"
 output_file = (
-    f"results/celeb/"
+    f"results/celeb_mm_plugin/"
     f"celeb_"
+    f"{beta_label}_"
     f"nref{n_ref}_"
     f"ntest{n_test}_"
     f"cs{calib_num}_"
@@ -115,7 +128,8 @@ output_file = (
     f"nlabel{n_label_total}_"
     f"ktop{k_top}_"
     f"kbot{k_bot}_"
-    f"tune{tuning_method_flag}_"  # Using the flag (0 or 1) in filename
+    f"split{splitting_method_flag}_"
+    f"G{grid_size}_"
     f"batch_{batch_num}.csv"
 )
 
@@ -126,19 +140,14 @@ os.makedirs(os.path.dirname(output_file), exist_ok=True)
 
 #####################
 # Define Methods    #
-##################### 
-
-# Method to be used for tuning alpha allocation - using random splitting full as specified
-methods_list_tuning = {
-    'Method (random splitting full)': get_preliminary_sets_naive_full,
-}
+#####################
 
 # All methods to be evaluated after tuning
 methods_list = {
-    'Method (random splitting)': get_preliminary_sets_naive, 
+    'Method (random splitting)': get_preliminary_sets_naive,
     'Method (benchmark)': get_preliminary_sets_benchmark,
     'Method (Bernoulli)': get_preliminary_sets_Bernoulli,
-    'Method (Bernoulli benchmark)': get_preliminary_sets_Bernoulli
+    'Method (Bernoulli benchmark)': get_preliminary_sets_Bernoulli,
 }
 
 # Number of neighbors to use in KNN
@@ -176,6 +185,11 @@ occ = occ_choices[occ_name]
 ########################
 # Auxiliary functions  #
 ########################
+
+# NOTE: calib_prob_real and calculate_freq_one_proportion implement the
+# selective sample-splitting (calibration) rule. Its use of the singleton
+# proportion p1 = M1/n (freq_one_prop) is a DIFFERENT quantity from the
+# missing-mass plug-in mu_hat = (M1+1)/(n+1); they are intentionally separate.
 
 #################### Selective Splitting ############################
 def calib_prob_real(frequency, exp_prop=calib_size, freq_one_prop=None):
@@ -306,18 +320,23 @@ def split_data(X, Y, image_names, n_ref, n_test, random_state=None):
 
 
 def analyze_data(X_ref, Y_ref, X_test, Y_test, methods_list,
-                 alpha_unseen, alpha_seen, alpha_class,  # Updated parameters
+                 alpha_unseen, alpha_seen, alpha_class,
                  occ, classifier, calib_size,
+                 mu_hat, alpha_unseen_cap, grid_size,
                  random_state=2024):
     """
     Analyze the data using specified methods and evaluate prediction sets.
+
+    The plug-in allocation is already deployed: alpha_class is the inflated
+    classification budget (no further missing-mass adjustment is applied here).
+    Benchmark methods use the full alpha_total budget.
     """
 
-    # Calculate proportion of frequency-1 labels
+    # Calculate proportion of frequency-1 labels (for the calibration split rule)
     freq_one_prop = calculate_freq_one_proportion(Y_ref)
     tqdm.write(f"Proportion of frequency-1 labels in reference data: {freq_one_prop:.3f}")
 
-    # Create adjusted calibration probability function
+    # Create adjusted calibration probability function (selective split rule)
     calib_prob_adjusted = partial(calib_prob_real,
                                   exp_prop=calib_size,
                                   freq_one_prop=freq_one_prop)
@@ -356,6 +375,7 @@ def analyze_data(X_ref, Y_ref, X_test, Y_test, methods_list,
         tqdm.write(f"Begin running {method_name}")
 
         if method_name == 'Method (benchmark)' or method_name == 'Method (benchmark full)':
+            # Benchmark uses full alpha_total budget
             decoded_prelim_sets = method_function(
                 X_ref, Y_ref, X_test,
                 alpha=alpha_unseen + alpha_seen + alpha_class,
@@ -364,6 +384,7 @@ def analyze_data(X_ref, Y_ref, X_test, Y_test, methods_list,
                 random_state=random_state
             )
         elif method_name == 'Method (Bernoulli benchmark)' or method_name == 'Method (Bernoulli benchmark full)':
+            # Benchmark uses full alpha_total budget
             decoded_prelim_sets = method_function(
                 X_ref, Y_ref, X_test,
                 alpha_prime=alpha_unseen + alpha_seen + alpha_class,
@@ -372,6 +393,7 @@ def analyze_data(X_ref, Y_ref, X_test, Y_test, methods_list,
                 random_state=random_state
             )
         elif method_name == 'Method (Bernoulli)' or method_name == 'Method (Bernoulli full)' or method_name == 'Method (Bernoulli uniform)':
+            # Use the deployed (already-inflated) alpha_class
             decoded_prelim_sets = method_function(
                 X_ref, Y_ref, X_test,
                 alpha_prime=alpha_class,
@@ -380,6 +402,7 @@ def analyze_data(X_ref, Y_ref, X_test, Y_test, methods_list,
                 random_state=random_state
             )
         else:
+            # Use the deployed (already-inflated) alpha_class
             decoded_prelim_sets = method_function(
                 X_ref, Y_ref, X_test,
                 alpha_prime=alpha_class,
@@ -418,10 +441,13 @@ def analyze_data(X_ref, Y_ref, X_test, Y_test, methods_list,
             new_results['prop_unseen_test'] = prop_unseen
             new_results['num_unseen_test'] = num_unseen
 
-            # Add alpha values to results
+            # Plug-in allocation values
             new_results['alpha_class'] = alpha_class
             new_results['alpha_unseen'] = alpha_unseen
             new_results['alpha_seen'] = alpha_seen
+            new_results['mu_hat'] = mu_hat
+            new_results['alpha_unseen_cap'] = alpha_unseen_cap
+            new_results['grid_size'] = grid_size
             new_results['occ'] = occ_name
 
             if beta_cv:
@@ -435,7 +461,8 @@ def analyze_data(X_ref, Y_ref, X_test, Y_test, methods_list,
 
 def run_real_experiment(X, Y, image_names, n_ref, n_test, num_exp, batch_num):
     """
-    Run experiments with alpha tuning for all three alphas.
+    Run experiments: CV-tune the plug-in hyperparameters, deploy the allocation,
+    then evaluate all methods.
     """
     np.random.seed(batch_num)
 
@@ -443,9 +470,9 @@ def run_real_experiment(X, Y, image_names, n_ref, n_test, num_exp, batch_num):
     all_alpha_class = []
     all_alpha_unseen = []
     all_alpha_seen = []
+    all_alpha_unseen_cap = []
+    all_mu_hat = []
     all_loss = []
-    all_normalized_size = []
-    all_joker_waste = []
 
     for i in tqdm(range(num_exp)):
         current_state = batch_num * 1000 + i
@@ -456,7 +483,7 @@ def run_real_experiment(X, Y, image_names, n_ref, n_test, num_exp, batch_num):
         tqdm.write(f"Loop {i + 1}: Number of data points: {len(Y_ref)}")
         tqdm.write(f"Number of unique classes in Y_ref: {len(np.unique(Y_ref))}")
 
-        # Calculate proportion of frequency-1 labels for tuning
+        # Calculate proportion of frequency-1 labels for the calibration split rule
         freq_one_prop = calculate_freq_one_proportion(Y_ref)
 
         # Create adjusted calibration probability function for tuning
@@ -464,69 +491,67 @@ def run_real_experiment(X, Y, image_names, n_ref, n_test, num_exp, batch_num):
                                       exp_prop=calib_size,
                                       freq_one_prop=freq_one_prop)
 
-        # Use the same data for tuning (as in synthetic experiments)
+        # Use the same data for tuning (as in the synthetic experiments)
         X_tune, Y_tune = X_ref, Y_ref
 
-        if tuning_method_flag != -1:
-            # Tune all three alphas using loss-based approach
-            alpha_class_tuned, alpha_unseen_tuned, alpha_seen_tuned, tuning_results = tune_alpha_allocation_loss_all_optimized(
-                X_tune, Y_tune,
-                alpha_total=alpha_total,
-                lambda_weight=lambda_weight,
-                n_splits=10,
-                alpha_step=0.005,
-                classifier=classifier,
-                occ=occ,
-                calibration_probability=calib_prob_adjusted,  # Use adjusted function
-                calib_size=calib_size,
-                pvalue_method='XGT',
-                random_state=current_state,
-                beta=None,
-                splitting_method=tuning_method,  # Uses the converted string value
-                verbose=(i == 0)  # Only verbose for first experiment
-            )
-            # Extract the best loss metrics from tuning results
-            best_idx = tuning_results['avg_loss'].idxmin()
-            best_loss = tuning_results.loc[best_idx, 'avg_loss']
-            best_normalized_size = tuning_results.loc[best_idx, 'avg_normalized_size']
-            best_joker_waste = tuning_results.loc[best_idx, 'avg_joker_waste']
-        else:
-            alpha_class_tuned = alpha_class_fixed
-            alpha_unseen_tuned = alpha_unseen_fixed
-            alpha_seen_tuned = alpha_seen_fixed
-            best_loss = np.nan
-            best_normalized_size = np.nan
-            best_joker_waste = np.nan
+        # --- Tune: cross-validate the plug-in hyperparameters (cap, alpha_seen)
+        best_cap, best_alpha_seen, tuning_results = tune_plugin_allocation_cv(
+            X_tune, Y_tune,
+            alpha_total=alpha_total,
+            lambda_weight=lambda_weight,
+            n_splits=10,
+            grid_size=grid_size,
+            classifier=classifier,
+            occ=occ,
+            calibration_probability=calib_prob_adjusted,
+            calib_size=calib_size,
+            pvalue_method='XGT',
+            random_state=current_state,
+            beta=None,
+            splitting_method=splitting_method,
+            verbose=(i == 0),
+        )
+        best_loss = tuning_results['avg_loss'].min()
 
-        # Analyze with tuned alphas
+        # --- Deploy: derive the realized allocation on the full reference sample
+        alpha_unseen, alpha_seen, alpha_class, mu_hat = compute_plugin_allocation(
+            Y_ref, alpha_total, best_cap, best_alpha_seen
+        )
+        tqdm.write(f"Deployed plug-in allocation: mu_hat={mu_hat:.4f}, cap={best_cap:.4f}, "
+                   f"alpha_unseen={alpha_unseen:.4f}, alpha_seen={alpha_seen:.4f}, "
+                   f"alpha_class={alpha_class:.4f}")
+
+        # Analyze with the deployed allocation
         results = analyze_data(
             X_ref, Y_ref, X_test, Y_test, methods_list,
-            alpha_unseen_tuned, alpha_seen_tuned, alpha_class_tuned,
+            alpha_unseen, alpha_seen, alpha_class,
             occ, classifier, calib_size,
+            mu_hat, best_cap, grid_size,
             random_state=current_state
         )
 
         all_results = pd.concat([all_results, results], ignore_index=True)
-        all_alpha_class.append(alpha_class_tuned)
-        all_alpha_unseen.append(alpha_unseen_tuned)
-        all_alpha_seen.append(alpha_seen_tuned)
+        all_alpha_class.append(alpha_class)
+        all_alpha_unseen.append(alpha_unseen)
+        all_alpha_seen.append(alpha_seen)
+        all_alpha_unseen_cap.append(best_cap)
+        all_mu_hat.append(mu_hat)
         all_loss.append(best_loss)
-        all_normalized_size.append(best_normalized_size)
-        all_joker_waste.append(best_joker_waste)
 
-    # Print summary of tuned alphas
-    print("\nSummary of tuned alphas across experiments:")
-    print(f"  Average α_class = {np.mean(all_alpha_class):.3f} ± {np.std(all_alpha_class):.3f}")
-    print(f"  Average α_unseen = {np.mean(all_alpha_unseen):.3f} ± {np.std(all_alpha_unseen):.3f}")
-    print(f"  Average α_seen = {np.mean(all_alpha_seen):.3f} ± {np.std(all_alpha_seen):.3f}")
+    # Print summary of deployed allocations
+    print("\nSummary of deployed plug-in allocations across experiments:")
+    print(f"  Average alpha_class = {np.mean(all_alpha_class):.3f} ± {np.std(all_alpha_class):.3f}")
+    print(f"  Average alpha_unseen = {np.mean(all_alpha_unseen):.3f} ± {np.std(all_alpha_unseen):.3f}")
+    print(f"  Average alpha_seen = {np.mean(all_alpha_seen):.3f} ± {np.std(all_alpha_seen):.3f}")
+    print(f"  Average alpha_unseen_cap = {np.mean(all_alpha_unseen_cap):.3f} ± {np.std(all_alpha_unseen_cap):.3f}")
+    print(f"  Average mu_hat = {np.mean(all_mu_hat):.3f} ± {np.std(all_mu_hat):.3f}")
     print(f"  Average loss = {np.mean(all_loss):.3f} ± {np.std(all_loss):.3f}")
 
-    # Add tuning metrics to results
+    # Add tuning metric to results
     all_results['tuning_loss'] = np.repeat(all_loss, len(all_results) // num_exp)
-    all_results['tuning_normalized_size'] = np.repeat(all_normalized_size, len(all_results) // num_exp)
-    all_results['tuning_joker_waste'] = np.repeat(all_joker_waste, len(all_results) // num_exp)
 
-    return all_results, all_alpha_class, all_alpha_unseen, all_alpha_seen
+    return (all_results, all_alpha_class, all_alpha_unseen, all_alpha_seen,
+            all_alpha_unseen_cap, all_mu_hat)
 
 
 ########################
@@ -579,11 +604,10 @@ else:  # subsampling_scheme == "none"
 ###################
 # Save Results    #
 ###################
-results, alpha_class_list, alpha_unseen_list, alpha_seen_list = run_real_experiment(
-    X, Y, image_names, n_ref, n_test, num_exp, batch_num
-)
+results, alpha_class_list, alpha_unseen_list, alpha_seen_list, alpha_unseen_cap_list, mu_hat_list = \
+    run_real_experiment(X, Y, image_names, n_ref, n_test, num_exp, batch_num)
 
-# Create header with average tuned alphas
+# Create header with average deployed allocation
 header_df = pd.DataFrame({
     "n_ref": [n_ref],
     "n_test": [n_test],
@@ -592,13 +616,16 @@ header_df = pd.DataFrame({
     "alpha_class_avg": [np.mean(alpha_class_list)],
     "alpha_unseen_avg": [np.mean(alpha_unseen_list)],
     "alpha_seen_avg": [np.mean(alpha_seen_list)],
+    "alpha_unseen_cap_avg": [np.mean(alpha_unseen_cap_list)],
+    "mu_hat_avg": [np.mean(mu_hat_list)],
     "calib_num": [calib_num],
     "lambda_weight": [lambda_weight],
     "n_label_total": [n_label_total],
     "k_top": [k_top],
     "k_bot": [k_bot],
-    "tuning_method": [tuning_method],  # String name for clarity in results
-    "tuning_method_flag": [tuning_method_flag]  # Numeric flag
+    "splitting_method": [splitting_method],
+    "splitting_method_flag": [splitting_method_flag],
+    "method_family": ["plugin"],
 })
 
 # Replicate header_df so it has as many rows as your results DataFrame
@@ -610,4 +637,5 @@ output_df.to_csv(output_file, index=False)
 print(f"Finished saving final results to:\n{output_file}\nParameters:")
 print(f"  n_ref={n_ref}, n_test={n_test}, alpha_total={alpha_total}, "
       f"calib_size={calib_size}, lambda_weight={lambda_weight}, "
-      f"n_label_total={n_label_total}, k_top={k_top}, k_bot={k_bot}, batch_num={batch_num}")
+      f"n_label_total={n_label_total}, k_top={k_top}, k_bot={k_bot}, "
+      f"batch_num={batch_num}, grid_size={grid_size}")
