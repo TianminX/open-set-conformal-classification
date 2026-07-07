@@ -29,7 +29,7 @@ K_TOP_LIST=(0)
 K_BOT_LIST=(0)
 
 # Splitting method used inside the plug-in CV (0 = random, 1 = bernoulli)
-SPLITTING_METHOD_LIST=(1)
+SPLITTING_METHOD_LIST=(0 1)
 
 # Cap-grid size G for the plug-in CV (number of subdivisions of alpha_remaining)
 GRID_SIZE_LIST=(20)
@@ -46,7 +46,7 @@ BATCH_LIST=$(seq 1 20)
 
 # SLURM parameters
 MEMO=16G                            # Memory required (increased for real data)
-TIME=00-25:00:00                    # Time required (increased for real data)
+TIME=00-35:00:00                    # Time required (increased for real data)
 CPUS=4                              # CPUs per task (KNN black box uses n_jobs=-1)
 
 # SBATCH command template

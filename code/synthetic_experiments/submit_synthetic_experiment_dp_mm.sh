@@ -16,7 +16,7 @@ CALIB_PROPORTION_LIST=(0.1) #(0.05 0.1 0.2 0.5)
 ALPHA_TOTAL_LIST=(0.10)
 
 # List of lambda_weight values (weight parameter for loss function, between 0 and 1)
-LAMBDA_WEIGHT_LIST=(0.50)
+LAMBDA_WEIGHT_LIST=(0.20 0.40 0.50)
 
 # List of batch numbers
 BATCH_LIST=$(seq 1 10)

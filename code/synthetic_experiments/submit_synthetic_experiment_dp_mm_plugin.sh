@@ -4,10 +4,16 @@
 # One job per parameter combination; jobs whose output CSV already exists are skipped.
 
 # Fixed theta for the asymptotic regime (we vary n_ref instead)
-THETA_LIST=(500)
+# THETA_LIST=(100)
 
 # Reference sizes, log-spaced from 1000 to 100000 (asymptotic regime)
-N_REF_LIST=(1000 2000 5000 10000 20000 50000 100000)
+# N_REF_LIST=(1000 2000 5000 10000 20000)
+
+# List of different theta values to experiment with
+THETA_LIST=(12 25 50 100 200 300 400 500 600 700 800 900 1000)
+
+# List of different n_ref values
+N_REF_LIST=(2000)
 
 # List of n_test values
 N_TEST_LIST=(1000)
@@ -25,7 +31,7 @@ LAMBDA_WEIGHT_LIST=(0.50)
 BATCH_LIST=$(seq 1 10)
 
 # Splitting method used inside the CV (0 = random, 1 = bernoulli)
-SPLITTING_METHOD_LIST=(0)
+SPLITTING_METHOD_LIST=(0 1)
 
 # Cap-grid size G for the plug-in CV (number of subdivisions of alpha_remaining)
 GRID_SIZE_LIST=(20)
@@ -33,7 +39,7 @@ GRID_SIZE_LIST=(20)
 
 # SLURM parameters
 MEMO=16G                             # Memory required
-TIME=00-12:00:00                     # Time required
+TIME=00-24:00:00                     # Time required
 CPUS=4                               # CPUs per task (KNN black box uses n_jobs=-1)
 
 # SBATCH command template

@@ -32,7 +32,7 @@ BATCH_LIST=$(seq 1 20)
 
 # SLURM parameters
 MEMO=16G                            # Memory required
-TIME=00-25:00:00                    # Time required (OpenMax-MLP trains an MLP per run)
+TIME=00-05:00:00                    # Time required (OpenMax-MLP trains an MLP per run)
 CPUS=4                              # CPUs per task (KNN black box uses n_jobs=-1)
 
 # SBATCH command template

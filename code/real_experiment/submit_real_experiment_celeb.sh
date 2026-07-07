@@ -25,7 +25,7 @@ K_TOP_LIST=(0)
 K_BOT_LIST=(0)
 
 # List of tuning methods (0 for 'random', 1 for 'bernoulli')
-TUNING_METHOD_LIST=(1)
+TUNING_METHOD_LIST=(0 1)
 
 # Note: Set n_label_total to 0 and k_top/k_bot to non-zero for top-bottom sampling
 # Set all three to 0 to use full dataset
@@ -35,7 +35,7 @@ BATCH_LIST=$(seq 1 20)
 
 # SLURM parameters
 MEMO=16G                            # Memory required (increased for real data)
-TIME=00-25:00:00                    # Time required (increased for real data)
+TIME=00-35:00:00                    # Time required (increased for real data)
 
 # SBATCH command template
 ORDP="sbatch --mem="$MEMO" --nodes=1 --ntasks=1 --cpus-per-task=1 --time="$TIME
