@@ -33,9 +33,9 @@ K_BOT_LIST=(0)
 BATCH_LIST=$(seq 1 20)
 
 # SLURM parameters
-MEMO=16G                            # Memory required
-TIME=00-08:00:00                    # Time required (each base is fit twice: scoring copy + full model)
-CPUS=4                              # CPUs per task (KNN black box uses n_jobs=-1)
+MEMO=8G                            # Memory required
+TIME=00-01:00:00                    # Time required (each base is fit twice: scoring copy + full model)
+CPUS=2                              # CPUs per task (KNN black box uses n_jobs=-1)
 
 # SBATCH command template
 ORDP="sbatch --mem="$MEMO" --nodes=1 --ntasks=1 --cpus-per-task="$CPUS" --time="$TIME
