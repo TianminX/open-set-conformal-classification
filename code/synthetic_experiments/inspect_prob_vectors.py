@@ -25,9 +25,9 @@ from distributions_y import DirichletProcess
 # ============================================================
 # Parameters — match your experiment settings
 # ============================================================
-theta = 100          # DP concentration (try 100, 500, 1000)
+theta = 600          # DP concentration (try 100, 500, 1000)
 n_ref = 2000
-n_test = 100          # small for inspection
+n_test = 500          # small for inspection
 calib_size = 0.1
 batch_num = 1
 n_neighbors = 5

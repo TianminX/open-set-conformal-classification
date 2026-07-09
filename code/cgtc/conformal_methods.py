@@ -174,7 +174,7 @@ def get_preliminary_sets_benchmark(
 def get_prediction_sets_openmax(
     X_train_calib, Y_train_calib, X_test,
     alpha, black_box, calib_size,
-    random_state=None
+    random_state=None, return_probs=False
 ):
     """
     Split-conformal classification with an OpenMax-style open-set classifier.
@@ -193,6 +193,10 @@ def get_prediction_sets_openmax(
         coverage relative to joker_train.
     Y_calib : ndarray
         The calibration labels (original space).
+    p_hat_test : ndarray, optional
+        Only if return_probs=True: the (n_test, K+1) test probability matrix
+        (columns 0..K-1 in np.unique(Y_train) order, column K = unknown), so
+        the caller can evaluate raw classifier accuracy.
     """
     # ---- 1. Split into train / calibration --------------------------------
     calib_num = int(calib_size * len(Y_train_calib))
@@ -251,6 +255,8 @@ def get_prediction_sets_openmax(
                 decoded.append("?")
         decoded_sets.append(decoded)
 
+    if return_probs:
+        return decoded_sets, Y_train, Y_calib, p_hat_test
     return decoded_sets, Y_train, Y_calib
 
 

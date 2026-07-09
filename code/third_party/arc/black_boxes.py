@@ -1213,8 +1213,12 @@ class GTOpenSetKNN:
 
     predict_proba returns an (n, K+1) matrix where columns 0..K-1 are the
     KNN seen-class probabilities scaled by (1 - p_gt) and column K is the
-    constant GT probability p_gt = (1 + n_singletons) / (1 + n_train),
-    capped at 0.5.
+    constant GT probability.
+
+    With smoothing=True (default), p_gt = (1 + n_singletons) / (1 + n_train),
+    capped at 0.5.  With smoothing=False, p_gt is the plain empirical
+    Good-Turing estimate n_singletons / n_train (same estimator as the CGTC
+    missing-mass plug-in, computed on the training split only).
     """
 
     def __init__(self, calibrate=False,
@@ -1226,7 +1230,8 @@ class GTOpenSetKNN:
                  metric='minkowski',
                  metric_params=None,
                  n_jobs=None,
-                 clip_proba_factor=0.1):
+                 clip_proba_factor=0.1,
+                 smoothing=True):
         self.model = KNeighborsClassifier(
             n_neighbors=n_neighbors,
             weights=weights,
@@ -1239,6 +1244,7 @@ class GTOpenSetKNN:
         )
         self.calibrate = calibrate
         self.factor = clip_proba_factor
+        self.smoothing = smoothing
         self.calibrated = None
 
     def fit(self, X, y):
@@ -1277,8 +1283,11 @@ class GTOpenSetKNN:
 
         n = p_seen.shape[0]
 
-        p_gt = (1 + self.n_singletons) / (1 + self.n_train)
-        p_gt = min(p_gt, 0.5)
+        if self.smoothing:
+            p_gt = (1 + self.n_singletons) / (1 + self.n_train)
+            p_gt = min(p_gt, 0.5)
+        else:
+            p_gt = self.n_singletons / self.n_train
 
         p_seen_scaled = p_seen * (1.0 - p_gt)
         p_unknown = np.full((n, 1), p_gt)

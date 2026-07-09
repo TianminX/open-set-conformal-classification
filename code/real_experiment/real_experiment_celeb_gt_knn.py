@@ -1,7 +1,6 @@
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
-from functools import partial
 from sklearn.metrics import roc_auc_score
 import sys
 import os
@@ -16,31 +15,33 @@ sys.path.insert(0, '../cgtc/')
 from conformal_methods import (
     evaluate_prediction_sets,
     get_prediction_sets_openmax,
-    get_prediction_sets_openmax_bernoulli,
 )
 
 #####################
 # Define Parameters #
 #####################
 
-# Direct conformalization of off-the-shelf open-set classifiers (OpenMax) on
-# the CelebA real data. Real-data counterpart of synthetic_experiment_openmax.py
-# and the baseline comparison for real_experiment_celeb_mm_plugin.py.
+# GT-constant baseline open-set classifier on the CelebA real data: the KNN
+# closed-set classifier (same base as the CGTC pipeline) with a constant
+# unknown-class column equal to the empirical Good-Turing missing-mass
+# estimate M1/n computed on the training split. Real-data counterpart of
+# synthetic_experiment_gt_knn.py and a feature-blind, marginally calibrated
+# baseline for real_experiment_celeb_openmax.py.
 #
 # The classifier outputs K+1 probabilities (K training classes + 1 unknown) and
 # standard split conformal is applied over the (K+1)-class space; calibration
-# points whose label is unseen in training are scored against the unknown column.
-# There is no Good-Turing testing step and no alpha-budget split: a single
-# alpha_total is used.
+# points whose label is unseen in training are scored against the unknown
+# column. Only the random internal split is used (no Bernoulli variant: the
+# selection weights would not be computable for this baseline).
 #
 # Usage:
-#   python real_experiment_celeb_openmax.py n_ref n_test calib_num alpha_total \
+#   python real_experiment_celeb_gt_knn.py n_ref n_test calib_num alpha_total \
 #          n_label_total k_top k_bot batch_num
 
 if len(sys.argv) != 9:
     print("Error: incorrect number of parameters.")
     print(
-        "Usage: python real_experiment_celeb_openmax.py n_ref n_test calib_num "
+        "Usage: python real_experiment_celeb_gt_knn.py n_ref n_test calib_num "
         "alpha_total n_label_total k_top k_bot batch_num")
     quit()
 
@@ -85,8 +86,8 @@ print(f"subsampling_scheme: {subsampling_scheme}")
 #####################
 
 output_file = (
-    f"results/celeb_openmax/"
-    f"celeb_openmax_"
+    f"results/celeb_gt_knn/"
+    f"celeb_gt_knn_"
     f"nref{n_ref}_"
     f"ntest{n_test}_"
     f"cs{calib_num}_"
@@ -109,9 +110,11 @@ os.makedirs(os.path.dirname(output_file), exist_ok=True)
 # seen-class model matches real_experiment_celeb_mm_plugin.py exactly.
 n_neighbors = 10
 
-# OpenMax-KNN: same KNN base as the CGTC pipeline (cosine metric on FaceNet
-# embeddings) + Weibull revision on per-class centroid distances.
-classifier_openmax_knn = black_boxes.OpenMaxKNN(
+# GT-KNN: same KNN base as the CGTC pipeline (cosine metric on FaceNet
+# embeddings) + constant Good-Turing unknown column. smoothing=False uses the
+# plain empirical estimate M1/n on the training split, matching the
+# missing-mass estimator of the plug-in method.
+classifier_gt_knn = black_boxes.GTOpenSetKNN(
     n_neighbors=n_neighbors,
     weights='distance',
     algorithm='auto',
@@ -121,57 +124,18 @@ classifier_openmax_knn = black_boxes.OpenMaxKNN(
     metric_params=None,
     n_jobs=-1,
     clip_proba_factor=1e-20,
-    tail_size=20,
-    alpha_rank=None   # revise all classes
+    smoothing=False
 )
 
-# Original OpenMax-MLP (Bendale & Boult, 2016): neural network on the FaceNet
-# embeddings + Weibull revision on penultimate-layer MAV distances.
-classifier_openmax_mlp = black_boxes.OpenMaxMLP(
-    hidden_layer_sizes=(256, 128),
-    activation='relu',
-    max_iter=500,
-    random_state=42,
-    tail_size=20,
-    alpha_rank=None   # revise all classes
-)
-
-# Methods to evaluate. Only the random internal split is used: the Bernoulli
-# selective split applies frequency-dependent selection without the weighted
-# quantile correction (get_prediction_sets_openmax_bernoulli is unweighted),
-# so it has no exact coverage guarantee at any level.
+# Methods to evaluate (random internal split only).
 methods_list = {
-    'Method (OpenMax-KNN)': classifier_openmax_knn,
-    'Method (OpenMax-MLP)': classifier_openmax_mlp,
+    'Method (GT-KNN)': classifier_gt_knn,
 }
 
 
 ########################
 # Auxiliary functions  #
 ########################
-
-#################### Selective Splitting ############################
-def calib_prob_real(frequency, exp_prop=calib_size, freq_one_prop=None):
-    """
-    Given a positive integer 'frequency' representing the frequency count of a label,
-    returns the probability of that label being selected into the calibration set.
-    Frequency-1 labels are never calibrated.
-    """
-    if frequency <= 1:
-        return 0.0
-    if freq_one_prop is not None and freq_one_prop < 1.0:
-        adjusted_prob = exp_prop / (1 - freq_one_prop)
-        return min(adjusted_prob, 1.0)
-    return exp_prop
-
-
-def calculate_freq_one_proportion(Y_ref):
-    """Calculate the proportion of data points that have frequency-1 labels."""
-    unique_labels, counts = np.unique(Y_ref, return_counts=True)
-    freq_one_labels = unique_labels[counts == 1]
-    freq_one_mask = np.isin(Y_ref, freq_one_labels)
-    return np.mean(freq_one_mask)
-
 
 #################### Sampling techniques ############################
 
@@ -245,22 +209,20 @@ def split_data(X, Y, image_names, n_ref, n_test, random_state=None):
     return X_ref, Y_ref, names_ref, X_test, Y_test, names_test
 
 
-def analyze_data_openmax(X_ref, Y_ref, X_test, Y_test, methods_list,
-                         alpha, calib_size, random_state=2024):
+def analyze_data_gt_knn(X_ref, Y_ref, X_test, Y_test, methods_list,
+                        alpha, calib_size, random_state=2024):
     """
-    Run each OpenMax-style method and evaluate prediction sets.
+    Run each GT-KNN method and evaluate prediction sets.
 
     For each method:
       - Call get_prediction_sets_openmax (which does the train/calib split
-        internally) or the Bernoulli variant with the selective split rule.
+        internally).
       - Evaluate with Y_ref (comparable to CGTC metrics).
       - Compute joker_train-specific metrics using Y_train.
       - Compute joker-adjusted set sizes: whenever '?' is in a prediction set,
         charge it the number of calibration-only classes (labels in the
         calibration set but not in training), since the CGTC methods enumerate
-        those labels explicitly. This is the exact per-set version of the
-        synthetic-experiment accounting
-        Size + `Prop ?` * (num_unique_labels - num_unique_labels_train).
+        those labels explicitly. Same accounting as the OpenMax baseline.
     """
 
     # Reference-level statistics (based on full Y_ref)
@@ -269,32 +231,16 @@ def analyze_data_openmax(X_ref, Y_ref, X_test, Y_test, methods_list,
     prop_unseen_ref = np.mean(unseen_mask_ref)
     num_unseen_ref = np.sum(unseen_mask_ref)
 
-    # Compute adjusted calibration probability for Bernoulli methods
-    freq_one_prop = calculate_freq_one_proportion(Y_ref)
-    tqdm.write(f"Proportion of frequency-1 labels in reference data: {freq_one_prop:.3f}")
-    calib_prob_adjusted = partial(calib_prob_real,
-                                  exp_prop=calib_size,
-                                  freq_one_prop=freq_one_prop)
-
     results_df = pd.DataFrame()
 
     for method_name, classifier in methods_list.items():
         tqdm.write(f"Running {method_name}")
 
-        if 'Bernoulli' in method_name:
-            prediction_sets, Y_train, Y_calib = get_prediction_sets_openmax_bernoulli(
-                X_ref, Y_ref, X_test,
-                alpha=alpha, black_box=classifier,
-                calibration_probability=calib_prob_adjusted,
-                random_state=random_state
-            )
-            P_test = None  # no probability matrix returned for this variant
-        else:
-            prediction_sets, Y_train, Y_calib, P_test = get_prediction_sets_openmax(
-                X_ref, Y_ref, X_test,
-                alpha=alpha, black_box=classifier, calib_size=calib_size,
-                random_state=random_state, return_probs=True
-            )
+        prediction_sets, Y_train, Y_calib, P_test = get_prediction_sets_openmax(
+            X_ref, Y_ref, X_test,
+            alpha=alpha, black_box=classifier, calib_size=calib_size,
+            random_state=random_state, return_probs=True
+        )
 
         # --- Evaluate with Y_ref (for comparison with CGTC) ---
         new_results = evaluate_prediction_sets(
@@ -360,6 +306,8 @@ def analyze_data_openmax(X_ref, Y_ref, X_test, Y_test, methods_list,
         # --- Raw classifier accuracy (pre-conformal) ---
         # Computed on the (n_test, K+1) probability matrix. Columns 0..K-1 are
         # in np.unique(Y_train) order (LabelEncoder order); column K = unknown.
+        # For GT-KNN the unknown column is constant, so p_open AUC = 0.5 and the
+        # p_open means all equal the GT estimate M1/n by construction.
         top1_acc = top5_acc = rank_median = rank_mean = np.nan
         p_unk_beats_true = p_open_auc = np.nan
         p_open_seen = p_open_calib_only = p_open_novel = np.nan
@@ -390,9 +338,9 @@ def analyze_data_openmax(X_ref, Y_ref, X_test, Y_test, methods_list,
             if 0 < unseen_mask_train.sum() < len(Y_test):
                 p_open_auc = roc_auc_score(unseen_mask_train, p_open_test)
             tqdm.write(
-                f"  [{method_name}] top1={top1_acc:.3f} (chance={1.0 / K:.4f}), "
-                f"top5={top5_acc:.3f}, true-label rank median={rank_median:.0f}/{K}, "
-                f"p_open AUC={p_open_auc:.3f}")
+                f"  [{method_name}] GT constant p_open={p_open_test[0]:.4f}, "
+                f"top1={top1_acc:.3f} (chance={1.0 / K:.4f}), "
+                f"top5={top5_acc:.3f}, true-label rank median={rank_median:.0f}/{K}")
 
         # --- Joker-adjusted set sizes ---
         # Number of classes that appear in calibration but not in training:
@@ -455,7 +403,7 @@ def analyze_data_openmax(X_ref, Y_ref, X_test, Y_test, methods_list,
 
 def run_real_experiment(X, Y, image_names, n_ref, n_test, num_exp, batch_num):
     """
-    Run direct-conformalization experiments with the OpenMax classifiers.
+    Run direct-conformalization experiments with the GT-KNN baseline classifier.
     """
     np.random.seed(batch_num)
 
@@ -470,7 +418,7 @@ def run_real_experiment(X, Y, image_names, n_ref, n_test, num_exp, batch_num):
         tqdm.write(f"Loop {i + 1}: Number of data points: {len(Y_ref)}")
         tqdm.write(f"Number of unique classes in Y_ref: {len(np.unique(Y_ref))}")
 
-        results = analyze_data_openmax(
+        results = analyze_data_gt_knn(
             X_ref, Y_ref, X_test, Y_test, methods_list,
             alpha=alpha_total, calib_size=calib_size,
             random_state=current_state
@@ -540,7 +488,7 @@ header_df = pd.DataFrame({
     "n_label_total": [n_label_total],
     "k_top": [k_top],
     "k_bot": [k_bot],
-    "method_family": ["openmax_direct"],
+    "method_family": ["gt_knn_direct"],
 })
 
 # Replicate header_df so it has as many rows as the results DataFrame
