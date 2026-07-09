@@ -1426,6 +1426,190 @@ class MSPOpenSet:
 
 
 ###############################################################################
+# PROSER (classifier + data placeholders), Zhou, Ye & Zhan, CVPR 2021
+###############################################################################
+
+class PROSERMLP:
+    """PROSER open-set classifier on fixed embeddings.
+
+    "Learning Placeholders for Open-Set Recognition" (Zhou, Ye & Zhan,
+    CVPR 2021) adapted to precomputed feature vectors: an MLP backbone with
+    K class logits plus n_dummy classifier-placeholder logits. The dummy
+    (max over the n_dummy logits) acts as the (K+1)-th "unknown" class, so
+    predict_proba natively returns a (K+1)-way softmax -- no external
+    unknown score or recalibration involved.
+
+    Training:
+      1. Closed-set pretraining: cross-entropy on the K class logits.
+      2. Placeholder finetuning with three terms:
+         - CE over the (K+1)-way combined logits with the true label
+           (keeps known classes classified correctly);
+         - CE with the true-class logit masked out and target = dummy
+           (pushes the dummy to rank second for known samples);
+         - data placeholders: manifold mixup at the middle layer between
+           same-batch pairs with different labels, target = dummy
+           (pseudo-novel samples).
+
+    Note the placeholder losses calibrate the dummy against *synthetic*
+    mixup novelty, not against the deployment novelty rate: the level of
+    the unknown probability is set by lambda_mask / lambda_mix and the
+    training dynamics, not by any estimate of P(new label).
+    """
+
+    def __init__(self,
+                 hidden_layer_sizes=(256, 128),
+                 n_dummy=5,
+                 pretrain_epochs=30,
+                 finetune_epochs=30,
+                 batch_size=128,
+                 lr=1e-3,
+                 mixup_alpha=2.0,
+                 lambda_mask=1.0,
+                 lambda_mix=1.0,
+                 random_state=None):
+        self.hidden_layer_sizes = hidden_layer_sizes
+        self.n_dummy = n_dummy
+        self.pretrain_epochs = pretrain_epochs
+        self.finetune_epochs = finetune_epochs
+        self.batch_size = batch_size
+        self.lr = lr
+        self.mixup_alpha = mixup_alpha
+        self.lambda_mask = lambda_mask
+        self.lambda_mix = lambda_mix
+        self.random_state = random_state
+
+    # ----- helpers -----------------------------------------------------------
+
+    def _combined_logits(self, logits):
+        """(B, K + n_dummy) -> (B, K + 1): dummy column = max over dummies."""
+        import torch
+        K = self.num_classes
+        dummy = logits[:, K:].max(dim=1, keepdim=True).values
+        return torch.cat([logits[:, :K], dummy], dim=1)
+
+    def _forward(self, x, mix_with=None, lam=None):
+        """Forward pass; optionally manifold-mixup at the middle layer."""
+        h = self.layer1_(x)
+        if mix_with is not None:
+            h = lam * h + (1.0 - lam) * self.layer1_(mix_with)
+        feat = self.layer2_(h)
+        return self.clf_(feat)
+
+    # ----- main API ----------------------------------------------------------
+
+    def fit(self, X, y):
+        import torch
+        import torch.nn as nn
+
+        y = np.asarray(y)
+        self.classes_ = np.unique(y)
+        self.num_classes = len(self.classes_)
+        self.n_train = len(y)
+        K = self.num_classes
+
+        if self.random_state is not None:
+            torch.manual_seed(self.random_state)
+        rng = np.random.default_rng(self.random_state)
+
+        h1, h2 = self.hidden_layer_sizes
+        dim_in = X.shape[1]
+        self.layer1_ = nn.Sequential(nn.Linear(dim_in, h1), nn.ReLU())
+        self.layer2_ = nn.Sequential(nn.Linear(h1, h2), nn.ReLU())
+        self.clf_ = nn.Linear(h2, K + self.n_dummy)
+
+        params = (list(self.layer1_.parameters())
+                  + list(self.layer2_.parameters())
+                  + list(self.clf_.parameters()))
+        opt = torch.optim.Adam(params, lr=self.lr)
+        ce = nn.CrossEntropyLoss()
+
+        X_t = torch.as_tensor(np.asarray(X), dtype=torch.float32)
+        # y is assumed already encoded 0..K-1 (LabelEncoder order); re-encode
+        # defensively in case original labels are passed.
+        y_enc = np.searchsorted(self.classes_, y)
+        y_t = torch.as_tensor(y_enc, dtype=torch.long)
+
+        n = len(y)
+        bs = min(self.batch_size, n)
+
+        # ---- Phase 1: closed-set pretraining (K logits only) ----
+        for _ in range(self.pretrain_epochs):
+            perm = rng.permutation(n)
+            for start in range(0, n, bs):
+                idx = perm[start:start + bs]
+                xb, yb = X_t[idx], y_t[idx]
+                logits = self._forward(xb)[:, :K]
+                loss = ce(logits, yb)
+                opt.zero_grad()
+                loss.backward()
+                opt.step()
+
+        # ---- Phase 2: placeholder finetuning ----
+        for _ in range(self.finetune_epochs):
+            perm = rng.permutation(n)
+            for start in range(0, n, bs):
+                idx = perm[start:start + bs]
+                xb, yb = X_t[idx], y_t[idx]
+                B = len(idx)
+
+                logits = self._forward(xb)
+                comb = self._combined_logits(logits)          # (B, K+1)
+
+                # (a) classify knowns correctly over K+1
+                loss = ce(comb, yb)
+
+                # (b) dummy should rank second: mask the true-class logit
+                masked = comb.clone()
+                masked[torch.arange(B), yb] = -1e9
+                dummy_target = torch.full((B,), K, dtype=torch.long)
+                loss = loss + self.lambda_mask * ce(masked, dummy_target)
+
+                # (c) data placeholders: manifold mixup between pairs with
+                # different labels, target = dummy
+                pair = torch.as_tensor(rng.permutation(B), dtype=torch.long)
+                diff = yb != yb[pair]
+                if diff.sum() > 0:
+                    lam = float(rng.beta(self.mixup_alpha, self.mixup_alpha))
+                    logits_mix = self._forward(
+                        xb[diff], mix_with=xb[pair][diff], lam=lam)
+                    comb_mix = self._combined_logits(logits_mix)
+                    mix_target = torch.full((int(diff.sum()),), K,
+                                            dtype=torch.long)
+                    loss = loss + self.lambda_mix * ce(comb_mix, mix_target)
+
+                opt.zero_grad()
+                loss.backward()
+                opt.step()
+
+        self.layer1_.eval()
+        self.layer2_.eval()
+        self.clf_.eval()
+
+        return copy.deepcopy(self)
+
+    def predict(self, X):
+        proba = self.predict_proba(X)
+        return self.classes_[np.argmax(proba[:, :-1], axis=1)]
+
+    def predict_proba(self, X, y_calib=None):
+        """Return (n, K+1) probability matrix.  y_calib is unused."""
+        import torch
+
+        X = np.asarray(X)
+        if X.ndim == 1:
+            X = X.reshape(1, -1)
+
+        X_t = torch.as_tensor(X, dtype=torch.float32)
+        with torch.no_grad():
+            out = []
+            for start in range(0, len(X_t), 4096):
+                logits = self._forward(X_t[start:start + 4096])
+                comb = self._combined_logits(logits)
+                out.append(torch.softmax(comb, dim=1).numpy())
+        return np.vstack(out)
+
+
+###############################################################################
 # GT-recalibrated open-set wrapper (base ranking + Good-Turing level)
 ###############################################################################
 
