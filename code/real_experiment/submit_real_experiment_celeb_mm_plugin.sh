@@ -42,7 +42,7 @@ BETA_LABEL="beta1.6"
 # Set all three to 0 to use the full dataset.
 
 # List of batch numbers
-BATCH_LIST=$(seq 1 20)
+BATCH_LIST=$(seq 1 50)
 
 # SLURM parameters
 MEMO=16G                            # Memory required (increased for real data)

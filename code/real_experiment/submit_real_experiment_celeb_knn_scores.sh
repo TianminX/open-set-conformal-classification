@@ -33,7 +33,7 @@ K_TOP_LIST=(0)
 K_BOT_LIST=(0)
 
 # List of batch numbers
-BATCH_LIST=$(seq 1 20)
+BATCH_LIST=$(seq 1 50)
 
 # SLURM parameters (KNN only; ~4x the GT-KNN work: 2 methods x 2 fits each.
 # GT-KNN jobs used ~43 s / ~290 MB.)

@@ -28,7 +28,7 @@ K_TOP_LIST=(0)
 K_BOT_LIST=(0)
 
 # List of batch numbers
-BATCH_LIST=$(seq 1 20)
+BATCH_LIST=$(seq 1 50)
 
 # SLURM parameters
 MEMO=16G                            # Memory required
