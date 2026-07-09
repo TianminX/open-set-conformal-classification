@@ -1296,6 +1296,136 @@ class GTOpenSetKNN:
 
 
 ###############################################################################
+# Distance/confidence-score open-set bases (few-shot friendly, no EVT fitting)
+###############################################################################
+
+class KNNDistOpenSet:
+    """KNN closed-set classifier + k-th nearest-neighbor distance unknown score.
+
+    The unknown column is the distance from x to its k_score-th nearest
+    training point (Sun et al., ICML 2022, "Out-of-Distribution Detection
+    with Deep Nearest Neighbors"), divided by dist_scale and clipped to
+    [0, 1]. No per-class fitting, so singleton classes cost nothing --
+    suited to few-shot many-class regimes where EVT-based methods (OpenMax,
+    EVM) cannot fit per-class tails.
+
+    The seen-class columns are the plain KNN probabilities scaled by
+    (1 - s); their relative magnitudes are untouched. Intended to be wrapped
+    in GTRecalOpenSet, which anchors the average unknown mass at the
+    Good-Turing level (the dist_scale normalization is then absorbed into
+    the recalibration constant).
+    """
+
+    def __init__(self,
+                 n_neighbors=5,
+                 k_score=None,
+                 weights='uniform',
+                 algorithm='auto',
+                 leaf_size=30,
+                 p=2,
+                 metric='minkowski',
+                 metric_params=None,
+                 n_jobs=None,
+                 clip_proba_factor=0.1,
+                 dist_scale=2.0):
+        self.model = KNeighborsClassifier(
+            n_neighbors=n_neighbors,
+            weights=weights,
+            algorithm=algorithm,
+            leaf_size=leaf_size,
+            p=p,
+            metric=metric,
+            metric_params=metric_params,
+            n_jobs=n_jobs
+        )
+        self.k_score = k_score if k_score is not None else n_neighbors
+        self.factor = clip_proba_factor
+        self.dist_scale = dist_scale
+
+    def fit(self, X, y):
+        self.classes_ = np.unique(y)
+        self.num_classes = len(self.classes_)
+        self.n_train = len(y)
+        self.model_fit = self.model.fit(X, y)
+        return copy.deepcopy(self)
+
+    def predict(self, X):
+        return self.model_fit.predict(X)
+
+    def predict_proba(self, X, y_calib=None):
+        """Return (n, K+1) probability matrix.  y_calib is unused."""
+        if X.ndim == 1:
+            X = X.reshape(1, -1)
+
+        p_seen = self.model_fit.predict_proba(X)
+        p_seen = np.clip(p_seen, self.factor / self.num_classes, 1.0)
+        p_seen = p_seen / p_seen.sum(axis=1)[:, None]
+
+        k = min(self.k_score, self.n_train)
+        dists, _ = self.model_fit.kneighbors(X, n_neighbors=k)
+        s = np.clip(dists[:, -1] / self.dist_scale, 0.0, 1.0)
+
+        return np.hstack([p_seen * (1.0 - s)[:, None], s[:, None]])
+
+
+class MSPOpenSet:
+    """KNN closed-set classifier + maximum-probability unknown score.
+
+    The unknown column is s(x) = 1 - max_k p_k(x) from the same KNN
+    (Vaze et al., ICLR 2022, "Open-Set Recognition: A Good Closed-Set
+    Classifier Is All You Need"). The seen-class columns are the plain KNN
+    probabilities scaled by (1 - s); their relative magnitudes are
+    untouched. Intended to be wrapped in GTRecalOpenSet, which anchors the
+    average unknown mass at the Good-Turing level.
+    """
+
+    def __init__(self,
+                 n_neighbors=5,
+                 weights='uniform',
+                 algorithm='auto',
+                 leaf_size=30,
+                 p=2,
+                 metric='minkowski',
+                 metric_params=None,
+                 n_jobs=None,
+                 clip_proba_factor=0.1):
+        self.model = KNeighborsClassifier(
+            n_neighbors=n_neighbors,
+            weights=weights,
+            algorithm=algorithm,
+            leaf_size=leaf_size,
+            p=p,
+            metric=metric,
+            metric_params=metric_params,
+            n_jobs=n_jobs
+        )
+        self.factor = clip_proba_factor
+
+    def fit(self, X, y):
+        self.classes_ = np.unique(y)
+        self.num_classes = len(self.classes_)
+        self.n_train = len(y)
+        self.model_fit = self.model.fit(X, y)
+        return copy.deepcopy(self)
+
+    def predict(self, X):
+        return self.model_fit.predict(X)
+
+    def predict_proba(self, X, y_calib=None):
+        """Return (n, K+1) probability matrix.  y_calib is unused."""
+        if X.ndim == 1:
+            X = X.reshape(1, -1)
+
+        p_seen = self.model_fit.predict_proba(X)
+        p_seen = np.clip(p_seen, self.factor / self.num_classes, 1.0)
+        p_seen = p_seen / p_seen.sum(axis=1)[:, None]
+
+        s = 1.0 - p_seen.max(axis=1)
+
+        return np.hstack([p_seen * (1.0 - s)[:, None], s[:, None]])
+
+
+###############################################################################
 # GT-recalibrated open-set wrapper (base ranking + Good-Turing level)
 ###############################################################################
 
