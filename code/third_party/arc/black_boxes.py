@@ -1295,6 +1295,91 @@ class GTOpenSetKNN:
         return np.hstack([p_seen_scaled, p_unknown])
 
 
+###############################################################################
+# GT-recalibrated open-set wrapper (base ranking + Good-Turing level)
+###############################################################################
+
+class GTRecalOpenSet:
+    """Recalibrated open-set classifier: base unknown ranking, GT level.
+
+    Wraps an OpenMax-style base classifier (predict_proba -> (n, K+1) with
+    the unknown column last) and rescales its unknown column by a constant
+    factor c = p_gt / s_bar so that the average unknown probability on fresh
+    data matches the Good-Turing missing-mass estimate p_gt = M1 / n of the
+    training split, while keeping the base classifier's x-dependent ranking
+    of unknown-ness.
+
+    s_bar (the out-of-sample mean of the raw unknown score) is estimated via
+    an internal split of the training data: a scoring copy of the base is
+    fit on a (1 - recal_frac) fraction and its unknown score is averaged on
+    the held-out recal_frac fraction. In-sample scores would be biased low
+    (training points sit near their class centroids/MAVs), which would
+    inflate c. The model used for prediction is fit on the FULL training
+    split, so the (K+1)-column layout is complete. Everything uses training
+    data only, preserving split-conformal validity.
+
+    predict_proba:
+        s(x)        = base unknown score (column K)
+        p_unk(x)    = min(c * s(x), cap)
+        p_seen_k(x) = base seen probs renormalized to sum to 1 - p_unk(x)
+
+    If the held-out mean s_bar is degenerate (~0) or there are no training
+    singletons, falls back to the constant p_gt column (the GT baseline).
+    """
+
+    def __init__(self, base, recal_frac=0.2, cap=0.9, random_state=None):
+        self.base = base
+        self.recal_frac = recal_frac
+        self.cap = cap
+        self.random_state = random_state
+
+    def fit(self, X, y):
+        y = np.asarray(y)
+        n = len(y)
+        unique_labels, counts = np.unique(y, return_counts=True)
+        self.p_gt_ = np.sum(counts == 1) / n
+
+        # Internal split: scoring copy fit on idx1, held-out mean on idx2
+        rng = np.random.default_rng(self.random_state)
+        perm = rng.permutation(n)
+        n2 = max(1, int(self.recal_frac * n))
+        idx2, idx1 = perm[:n2], perm[n2:]
+
+        scoring_copy = self.base.fit(X[idx1], y[idx1])
+        s_holdout = scoring_copy.predict_proba(X[idx2])[:, -1]
+        self.s_bar_ = float(np.mean(s_holdout))
+
+        if self.s_bar_ > 1e-12 and self.p_gt_ > 0:
+            self.scale_ = self.p_gt_ / self.s_bar_
+        else:
+            self.scale_ = None  # fall back to the constant GT column
+
+        # Final model on the full training split (complete class layout)
+        self.model_fit = self.base.fit(X, y)
+        self.num_classes = self.model_fit.num_classes
+
+        return copy.deepcopy(self)
+
+    def predict(self, X):
+        return self.model_fit.predict(X)
+
+    def predict_proba(self, X, y_calib=None):
+        """Return (n, K+1) probability matrix.  y_calib is unused."""
+        P = self.model_fit.predict_proba(X)
+        s = P[:, -1]
+        p_seen = P[:, :-1]
+
+        if self.scale_ is None:
+            p_unk = np.full(len(s), self.p_gt_)
+        else:
+            p_unk = np.minimum(self.scale_ * s, self.cap)
+
+        seen_mass = np.clip(p_seen.sum(axis=1), 1e-12, None)
+        p_seen_scaled = p_seen * ((1.0 - p_unk) / seen_mass)[:, None]
+
+        return np.hstack([p_seen_scaled, p_unk[:, None]])
+
+
 class LogisticRegressionUnseenCalib:
     def __init__(self, calibrate=False, clip_proba_factor=0.1, multi_class = 'multinomial', solver='lbfgs'):
         """

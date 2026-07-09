@@ -1,10 +1,11 @@
 #!/bin/bash
 
-# Submit SLURM jobs for the GT-constant baseline (KNN + Good-Turing unknown
-# column) on CelebA. Feature-blind, marginally calibrated benchmark for
-# submit_real_experiment_celeb_openmax.sh: same n_ref grid, subsampling
-# scheme, and batch seeds so that the reference/test splits match the OpenMax
-# and plug-in runs exactly.
+# Submit SLURM jobs for the GT-recalibrated OpenMax classifiers on CelebA
+# (unknown column rescaled so its average matches the Good-Turing estimate
+# M1/n of the training split; keeps OpenMax's x-dependent unknown ranking).
+# Same n_ref grid, subsampling scheme, and batch seeds as
+# submit_real_experiment_celeb_openmax.sh so the reference/test splits match
+# the raw OpenMax, GT-KNN, and plug-in runs exactly.
 # One job per parameter combination; jobs whose output CSV already exists are skipped.
 
 # List of different n_ref values
@@ -31,17 +32,17 @@ K_BOT_LIST=(0)
 # List of batch numbers
 BATCH_LIST=$(seq 1 20)
 
-# SLURM parameters (observed usage: ~43 s, ~290 MB peak per job)
-MEMO=2G                             # Memory required
-TIME=00-00:15:00                    # Time required (KNN only, no MLP/Weibull fitting)
-CPUS=2                              # CPUs per task (KNN black box uses n_jobs=-1)
+# SLURM parameters
+MEMO=16G                            # Memory required
+TIME=00-08:00:00                    # Time required (each base is fit twice: scoring copy + full model)
+CPUS=4                              # CPUs per task (KNN black box uses n_jobs=-1)
 
 # SBATCH command template
 ORDP="sbatch --mem="$MEMO" --nodes=1 --ntasks=1 --cpus-per-task="$CPUS" --time="$TIME
 
 # Ensure the results and logs directories exist
-mkdir -p "results/celeb_gt_knn/"
-mkdir -p "logs/celeb_gt_knn/"
+mkdir -p "results/celeb_openmax_recal/"
+mkdir -p "logs/celeb_openmax_recal/"
 
 # Loop with BATCH as the outermost loop
 for BATCH in $BATCH_LIST; do
@@ -61,18 +62,18 @@ for BATCH in $BATCH_LIST; do
               ALPHA_TOTAL_FMT=$(printf "%.3f" "$ALPHA_TOTAL")
 
               # Create a unique job name (shortened to avoid SLURM limitations)
-              JOBN="celgtknn_n${N_REF}_t${N_TEST}_c${CALIB_NUM}_aT${ALPHA_TOTAL_FMT}_nl${N_LABEL_TOTAL}_k${K_TOP}_${K_BOT}_b${BATCH}"
+              JOBN="celomrcl_n${N_REF}_t${N_TEST}_c${CALIB_NUM}_aT${ALPHA_TOTAL_FMT}_nl${N_LABEL_TOTAL}_k${K_TOP}_${K_BOT}_b${BATCH}"
 
               # Define output and error log files
-              OUTF="logs/celeb_gt_knn/${JOBN}.out"
-              ERRF="logs/celeb_gt_knn/${JOBN}.err"
+              OUTF="logs/celeb_openmax_recal/${JOBN}.out"
+              ERRF="logs/celeb_openmax_recal/${JOBN}.err"
 
               # Define output CSV file name (must match the Python output path)
-              OUT_FILE="results/celeb_gt_knn/celeb_gt_knn_nref${N_REF}_ntest${N_TEST}_cs${CALIB_NUM}_atotal${ALPHA_TOTAL_FMT}_nlabel${N_LABEL_TOTAL}_ktop${K_TOP}_kbot${K_BOT}_batch_${BATCH}.csv"
+              OUT_FILE="results/celeb_openmax_recal/celeb_openmax_recal_nref${N_REF}_ntest${N_TEST}_cs${CALIB_NUM}_atotal${ALPHA_TOTAL_FMT}_nlabel${N_LABEL_TOTAL}_ktop${K_TOP}_kbot${K_BOT}_batch_${BATCH}.csv"
 
               if [[ ! -f $OUT_FILE ]]; then
                 # If the file doesn't exist, submit the job
-                SCRIPT="real_experiment_celeb_gt_knn.sh $N_REF $N_TEST $CALIB_NUM $ALPHA_TOTAL_FMT $N_LABEL_TOTAL $K_TOP $K_BOT $BATCH"
+                SCRIPT="real_experiment_celeb_openmax_recal.sh $N_REF $N_TEST $CALIB_NUM $ALPHA_TOTAL_FMT $N_LABEL_TOTAL $K_TOP $K_BOT $BATCH"
                 ORD=$ORDP" -J $JOBN -o $OUTF -e $ERRF $SCRIPT"
 
                 echo "Submitting job: $JOBN (batch=$BATCH, n_ref=$N_REF, calib_num=$CALIB_NUM, n_label_total=$N_LABEL_TOTAL)"
