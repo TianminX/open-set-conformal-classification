@@ -236,9 +236,15 @@ def compute_RGT_pvalues_testing_old(X_ref, Y_ref, X_test, beta=1.6):
     return pvals
 
 
-def select_beta_cv(X_ref, Y_ref, betas=np.linspace(1.0, 2.0, 21), cv=5, randomized=True):
+def select_beta_cv(X_ref, Y_ref, betas=np.linspace(1.0, 2.0, 21), cv=5, randomized=True,
+                   default_beta=1.6):
     """
-    Cross-validate beta ∈ betas to minimize mean p-value on held-out folds.
+    Cross-validate beta ∈ betas to minimize the mean truncated p-value
+    min(psi_seen, 1) on held-out folds. Values above 1 are equivalent in
+    practice (the test cannot reject), so they are truncated before
+    averaging; when several betas tie (in particular when the criterion is
+    flat at 1 because the seen-test is uninformative), the tie is broken in
+    favor of the beta closest to default_beta.
 
     Parameters
     ----------
@@ -246,6 +252,7 @@ def select_beta_cv(X_ref, Y_ref, betas=np.linspace(1.0, 2.0, 21), cv=5, randomiz
     betas        : array-like of candidate betas
     cv           : number of folds
     randomized   : if True, use compute_RGT_... else compute_GT_...
+    default_beta : tie-breaking target (sensitivity-analysis default)
 
     Returns
     -------
@@ -253,7 +260,7 @@ def select_beta_cv(X_ref, Y_ref, betas=np.linspace(1.0, 2.0, 21), cv=5, randomiz
     """
     tqdm.write(f"[CV] Starting beta cross-validation over {len(betas)} values using {cv}-fold...")
     kf = KFold(n_splits=cv, shuffle=True, random_state=0)
-    best_beta, best_score = None, np.inf
+    mean_scores = []
 
     for beta in betas:
         fold_scores = []
@@ -268,15 +275,19 @@ def select_beta_cv(X_ref, Y_ref, betas=np.linspace(1.0, 2.0, 21), cv=5, randomiz
             else:
                 pvals = compute_GT_pvalues_testing_old(X_train, Y_train, X_val, beta=beta)
 
-            fold_score = pvals.mean()
+            fold_score = np.minimum(pvals, 1.0).mean()
             fold_scores.append(fold_score)
-            # tqdm.write(f"  Fold {fold_id + 1}/{cv} → Mean p-value: {fold_score:.6f}")
+            # tqdm.write(f"  Fold {fold_id + 1}/{cv} → Mean truncated p-value: {fold_score:.6f}")
 
         mean_score = np.mean(fold_scores)
-        tqdm.write(f"[CV] Beta = {beta:.3f}, Average CV p-value = {mean_score:.6f}")
+        mean_scores.append(mean_score)
+        tqdm.write(f"[CV] Beta = {beta:.3f}, Average CV truncated p-value = {mean_score:.6f}")
 
-        if mean_score < best_score:
-            best_score, best_beta = mean_score, beta
+    mean_scores = np.array(mean_scores)
+    best_score = mean_scores.min()
+    # Break ties (flat criterion) in favor of the beta closest to the default
+    tied = np.flatnonzero(np.isclose(mean_scores, best_score, atol=1e-12))
+    best_beta = betas[tied[np.argmin(np.abs(np.asarray(betas)[tied] - default_beta))]]
 
     tqdm.write(f"[CV] Best beta selected: {best_beta:.3f} with score {best_score:.6f}")
     return best_beta, best_score

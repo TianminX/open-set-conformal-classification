@@ -92,7 +92,7 @@ print(f"plug-in CV cap-grid size G: {grid_size}")
 # If default_beta is not None, use it. If None, use optimal weights.
 default_beta = 1.6
 # If beta_cv is true, use CV to choose beta
-beta_cv = False
+beta_cv = True
 
 # One-class classifier choice: 'lof', 'iforest', 'ocsvm'
 occ_name = 'lof'

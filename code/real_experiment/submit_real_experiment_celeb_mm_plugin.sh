@@ -35,8 +35,9 @@ SPLITTING_METHOD_LIST=(0 1)
 GRID_SIZE_LIST=(20)
 
 # Beta label embedded in the Python output filename.
-# Must match the Python script: beta_cv=False, default_beta=1.6  ->  "beta1.6".
-BETA_LABEL="beta1.6"
+# Must match the Python script: beta_cv=True -> "betacv"
+# (beta_cv=False, default_beta=1.6 -> "beta1.6").
+BETA_LABEL="betacv"
 
 # Note: Set n_label_total to 0 and k_top/k_bot to non-zero for top-bottom sampling.
 # Set all three to 0 to use the full dataset.
