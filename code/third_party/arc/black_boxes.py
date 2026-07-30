@@ -937,6 +937,50 @@ def _openmax_revision(p_seen, w):
     return np.hstack([p_revised, p_unknown])
 
 
+def _pairwise_mav_distances(A, M, distance_type='euclidean', eucos_scale=200.0):
+    """Distances from each row of A (n, d) to each row of M (K, d).
+
+    distance_type 'euclidean' gives plain Euclidean distances;
+    'eucos' gives euclidean/eucos_scale + cosine distance, matching the
+    OSDN reference implementation (Bendale & Boult, 2016).
+    """
+    sq = np.maximum(
+        (A ** 2).sum(axis=1)[:, None]
+        + (M ** 2).sum(axis=1)[None, :]
+        - 2.0 * (A @ M.T),
+        0.0,
+    )
+    eu = np.sqrt(sq)
+    if distance_type == 'euclidean':
+        return eu
+    norms = np.maximum(
+        np.linalg.norm(A, axis=1)[:, None] * np.linalg.norm(M, axis=1)[None, :],
+        1e-12,
+    )
+    cos = 1.0 - (A @ M.T) / norms
+    return eu / eucos_scale + cos
+
+
+def _graded_alpha_weights(scores, alpha_rank):
+    """OSDN graded alpha weights, per row of `scores` (n, K).
+
+    The top alpha_rank classes (ranked by score, descending) get weight
+    (alpha_rank + 1 - rank) / alpha_rank for rank = 1..alpha_rank (matching
+    OSDN's ``alpha_weights``); all other classes get 0, i.e. are not
+    revised. alpha_rank=None returns all ones (revise every class at full
+    weight).
+    """
+    n, K = scores.shape
+    if alpha_rank is None:
+        return np.ones((n, K))
+    ar = min(alpha_rank, K)
+    order = np.argsort(-scores, axis=1)
+    grades = (ar + 1 - np.arange(1, ar + 1)) / float(ar)
+    weights = np.zeros((n, K))
+    np.put_along_axis(weights, order[:, :ar], grades[None, :], axis=1)
+    return weights
+
+
 ###############################################################################
 # Original OpenMax  (MLP + penultimate-layer activations)
 ###############################################################################
@@ -969,7 +1013,11 @@ class OpenMaxMLP:
                  max_iter=500,
                  random_state=None,
                  tail_size=20,
-                 alpha_rank=None):
+                 alpha_rank=None,
+                 distance_type='euclidean',
+                 eucos_scale=200.0,
+                 revision_space='proba',
+                 weibull_fallback='pooled'):
         """
         Parameters
         ----------
@@ -978,7 +1026,22 @@ class OpenMaxMLP:
         tail_size : int
             Number of largest MAV distances used for Weibull fitting per class.
         alpha_rank : int or None
-            Revise only the top alpha_rank classes.  None = revise all.
+            Revise only the top alpha_rank classes, with OSDN graded weights
+            (alpha_rank + 1 - rank) / alpha_rank.  None = revise all classes
+            at full weight.
+        distance_type : str
+            'euclidean' (simplified variant) or 'eucos' (euclidean/eucos_scale
+            + cosine, as in the OSDN reference implementation).
+        eucos_scale : float
+            Euclidean scaling constant of the eucos distance (OSDN uses 200).
+        revision_space : str
+            'proba' revises the softmax probabilities directly (simplified
+            variant); 'logit' revises the raw output-layer logits and then
+            takes a softmax over the K+1 revised values, as in OSDN.
+        weibull_fallback : str
+            'pooled' uses a pooled Weibull fit for classes whose per-class
+            fit fails (few-shot classes); 'none' leaves them unrevised
+            (w_k = 0), as in OSDN, which assumes enough samples per class.
         """
         self.hidden_layer_sizes = hidden_layer_sizes
         self.activation = activation
@@ -986,6 +1049,10 @@ class OpenMaxMLP:
         self.random_state = random_state
         self.tail_size = tail_size
         self.alpha_rank = alpha_rank
+        self.distance_type = distance_type
+        self.eucos_scale = eucos_scale
+        self.revision_space = revision_space
+        self.weibull_fallback = weibull_fallback
 
     # ----- helpers -----------------------------------------------------------
 
@@ -1002,6 +1069,11 @@ class OpenMaxMLP:
             elif self.activation == 'logistic':
                 a = 1.0 / (1.0 + np.exp(-a))
         return a
+
+    def _raw_logits(self, X):
+        """Raw output-layer scores (pre-softmax), OSDN's ``fc8`` scores."""
+        acts = self._penultimate_activations(X)
+        return acts @ self.model_.coefs_[-1] + self.model_.intercepts_[-1]
 
     # ----- main API ----------------------------------------------------------
 
@@ -1036,9 +1108,15 @@ class OpenMaxMLP:
             acts_k = acts[mask]
             self.mav_[k] = acts_k.mean(axis=0)
 
-            dists = np.linalg.norm(acts_k - self.mav_[k], axis=1)
+            dists = _pairwise_mav_distances(
+                acts_k, self.mav_[k][None, :],
+                distance_type=self.distance_type, eucos_scale=self.eucos_scale
+            )[:, 0]
             all_tail_dists.extend(dists[dists > 0].tolist())
             self.weibull_params_[k] = _fit_weibull_tail(dists, self.tail_size)
+
+        # MAV matrix aligned with self.classes_ order (for vectorized dists)
+        self.mav_matrix_ = np.vstack([self.mav_[k] for k in self.classes_])
 
         # Pooled Weibull fallback
         self.pooled_weibull_ = None
@@ -1060,30 +1138,40 @@ class OpenMaxMLP:
         n = X.shape[0]
         K = self.num_classes
 
-        # Base softmax probabilities (n, K)
-        p_seen = self.model_.predict_proba(X)
-
-        # Penultimate-layer activations
+        # Penultimate-layer activations and distances to all class MAVs
         acts = self._penultimate_activations(X)
+        D = _pairwise_mav_distances(
+            acts, self.mav_matrix_,
+            distance_type=self.distance_type, eucos_scale=self.eucos_scale
+        )
 
         # Weibull revision weights
         w = np.zeros((n, K))
         for j, k in enumerate(self.classes_):
-            params = self.weibull_params_.get(k) or self.pooled_weibull_
+            params = self.weibull_params_.get(k)
+            if params is None and self.weibull_fallback == 'pooled':
+                params = self.pooled_weibull_
             if params is not None:
                 c, scale = params
-                d = np.linalg.norm(acts - self.mav_[k], axis=1)
-                w[:, j] = weibull_min.cdf(d, c, loc=0, scale=scale)
+                w[:, j] = weibull_min.cdf(D[:, j], c, loc=0, scale=scale)
 
-        # Only revise top alpha_rank classes per sample
-        if self.alpha_rank is not None and self.alpha_rank < K:
-            for i in range(n):
-                top = np.argsort(-p_seen[i])[:self.alpha_rank]
-                mask = np.ones(K, dtype=bool)
-                mask[top] = False
-                w[i, mask] = 0.0
+        if self.revision_space == 'logit':
+            # OSDN recipe: revise the raw output-layer scores of the top
+            # alpha_rank classes with graded weights, accumulate the removed
+            # mass in an unknown score, then softmax over the K+1 values.
+            logits = self._raw_logits(X)
+            wa = w * _graded_alpha_weights(logits, self.alpha_rank)
+            modified = logits * (1.0 - wa)
+            unknown = (logits - modified).sum(axis=1, keepdims=True)
+            all_scores = np.hstack([modified, unknown])
+            all_scores = all_scores - all_scores.max(axis=1, keepdims=True)
+            exp_scores = np.exp(all_scores)
+            return exp_scores / exp_scores.sum(axis=1, keepdims=True)
 
-        return _openmax_revision(p_seen, w)
+        # Simplified variant: revise the softmax probabilities directly
+        p_seen = self.model_.predict_proba(X)
+        wa = w * _graded_alpha_weights(p_seen, self.alpha_rank)
+        return _openmax_revision(p_seen, wa)
 
 
 ###############################################################################
@@ -1123,7 +1211,10 @@ class OpenMaxKNN:
                  n_jobs=None,
                  clip_proba_factor=1e-20,
                  tail_size=20,
-                 alpha_rank=None):
+                 alpha_rank=None,
+                 distance_type='euclidean',
+                 eucos_scale=200.0,
+                 weibull_fallback='pooled'):
         self.model = KNeighborsClassifier(
             n_neighbors=n_neighbors, weights=weights, algorithm=algorithm,
             leaf_size=leaf_size, p=p, metric=metric,
@@ -1132,6 +1223,9 @@ class OpenMaxKNN:
         self.factor = clip_proba_factor
         self.tail_size = tail_size
         self.alpha_rank = alpha_rank
+        self.distance_type = distance_type
+        self.eucos_scale = eucos_scale
+        self.weibull_fallback = weibull_fallback
 
     def fit(self, X, y):
         self.classes_ = np.unique(y)
@@ -1149,11 +1243,19 @@ class OpenMaxKNN:
             self.centroids_[k] = X_k.mean(axis=0)
 
             if len(X_k) >= 2:
-                dists = np.linalg.norm(X_k - self.centroids_[k], axis=1)
+                dists = _pairwise_mav_distances(
+                    X_k, self.centroids_[k][None, :],
+                    distance_type=self.distance_type,
+                    eucos_scale=self.eucos_scale
+                )[:, 0]
                 all_tail_dists.extend(dists[dists > 0].tolist())
                 self.weibull_params_[k] = _fit_weibull_tail(dists, self.tail_size)
             else:
                 self.weibull_params_[k] = None
+
+        # Centroid matrix aligned with self.classes_ order (vectorized dists)
+        self.centroid_matrix_ = np.vstack(
+            [self.centroids_[k] for k in self.classes_])
 
         # Pooled Weibull fallback
         self.pooled_weibull_ = None
@@ -1181,27 +1283,26 @@ class OpenMaxKNN:
         p_seen = p_seen / p_seen.sum(axis=1)[:, None]
 
         # Distances to centroids
-        distances = np.zeros((n, K))
-        for j, k in enumerate(self.classes_):
-            distances[:, j] = np.linalg.norm(X - self.centroids_[k], axis=1)
+        distances = _pairwise_mav_distances(
+            X, self.centroid_matrix_,
+            distance_type=self.distance_type, eucos_scale=self.eucos_scale
+        )
 
         # Weibull revision weights
         w = np.zeros((n, K))
         for j, k in enumerate(self.classes_):
-            params = self.weibull_params_.get(k) or self.pooled_weibull_
+            params = self.weibull_params_.get(k)
+            if params is None and self.weibull_fallback == 'pooled':
+                params = self.pooled_weibull_
             if params is not None:
                 c, scale = params
                 w[:, j] = weibull_min.cdf(distances[:, j], c, loc=0, scale=scale)
 
-        # Only revise top alpha_rank classes per sample
-        if self.alpha_rank is not None and self.alpha_rank < K:
-            for i in range(n):
-                top = np.argsort(-p_seen[i])[:self.alpha_rank]
-                mask = np.ones(K, dtype=bool)
-                mask[top] = False
-                w[i, mask] = 0.0
-
-        return _openmax_revision(p_seen, w)
+        # Graded OSDN alpha weights on the top alpha_rank classes, ranked by
+        # the KNN probabilities (no logits exist for a KNN base). Revision
+        # stays in probability space -- the documented KNN adaptation.
+        wa = w * _graded_alpha_weights(p_seen, self.alpha_rank)
+        return _openmax_revision(p_seen, wa)
 
 
 ###############################################################################
