@@ -17,7 +17,7 @@ CALIB_PROPORTION=0.1
 ALPHA_TOTAL_LIST=(0.20)
 
 # List of lambda_weight values (weight parameter for loss function, between 0 and 1)
-LAMBDA_WEIGHT_LIST=(0.50)
+LAMBDA_WEIGHT_LIST=(0.25 0.50)
 
 # List of n_label_total values (for uniform sampling, 0 to skip)
 N_LABEL_TOTAL_LIST=(2000) # (500 1000 3000 4000)
@@ -29,7 +29,7 @@ K_TOP_LIST=(0)
 K_BOT_LIST=(0)
 
 # Splitting method used inside the plug-in CV (0 = random, 1 = bernoulli)
-SPLITTING_METHOD_LIST=(0 1)
+SPLITTING_METHOD_LIST=(0)
 
 # Cap-grid size G for the plug-in CV (number of subdivisions of alpha_remaining)
 GRID_SIZE_LIST=(20)
@@ -43,7 +43,7 @@ BETA_LABEL="betacv"
 # Set all three to 0 to use the full dataset.
 
 # List of batch numbers
-BATCH_LIST=$(seq 1 50)
+BATCH_LIST=$(seq 1 20)
 
 # SLURM parameters
 MEMO=16G                            # Memory required (increased for real data)
