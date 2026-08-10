@@ -1,3 +1,28 @@
+"""
+=============================================================================
+STALE -- SUPERSEDED BY synthetic_experiment_dp_mm_plugin.py. DO NOT USE FOR
+NEW RUNS.
+=============================================================================
+
+This script implements an EARLIER missing-mass adjustment that does NOT match
+the method described in the paper (Section "A Missing-Mass Adjustment for
+Reducing Conservativeness"). Specifically, with adjust_alpha_flag = 1 it:
+
+  * uses the classical Good-Turing estimate mu_hat = M_1 / n, instead of the
+    conformal estimate mu_hat = (M_1 + 1) / (n + 1) required by the paper;
+  * applies no cap alpha_unseen = alpha_unseen ^ mu_hat, and therefore does not
+    reallocate the wasted unseen-label surplus to the classification budget;
+  * inflates only alpha_class -> alpha_class / (1 - mu_hat), i.e. it implements
+    the first effect of the adjustment but not the second;
+  * falls back to NO adjustment (mu_hat <- 0) in the degenerate case mu_hat >= 1,
+    whereas the paper's convention is alpha_class <- 1.
+
+It is retained only to reproduce the "CGTC (orig)" and "CGTC (adj-a)" curves in
+dp_mm_plugin_vs_old.R, which read results_hpc/dp_tuned_mixed_labels_mm/.
+The current, paper-matching implementation is synthetic_experiment_dp_mm_plugin.py
+(driving cgtc/alpha_tune_plugin.py).
+"""
+
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
@@ -28,13 +53,13 @@ from testing import select_beta_cv
 #####################
 
 # Parse command-line arguments
-# Tuned mode:  python synthetic_experiment_dp_mm.py theta n_ref n_test calib_num alpha_total lambda_weight batch_num tuning_method_flag [adjust_alpha_flag]
-# Fixed mode:  python synthetic_experiment_dp_mm.py theta n_ref n_test calib_num alpha_total lambda_weight batch_num -1 alpha_class alpha_unseen alpha_seen [adjust_alpha_flag]
+# Tuned mode:  python synthetic_experiment_dp_mm_stale.py theta n_ref n_test calib_num alpha_total lambda_weight batch_num tuning_method_flag [adjust_alpha_flag]
+# Fixed mode:  python synthetic_experiment_dp_mm_stale.py theta n_ref n_test calib_num alpha_total lambda_weight batch_num -1 alpha_class alpha_unseen alpha_seen [adjust_alpha_flag]
 
 if len(sys.argv) < 9:
     print("Error: incorrect number of parameters.")
-    print("Usage (tuned):  python synthetic_experiment_dp_mm.py theta n_ref n_test calib_num alpha_total lambda_weight batch_num tuning_method_flag [adjust_alpha_flag]")
-    print("Usage (fixed):  python synthetic_experiment_dp_mm.py theta n_ref n_test calib_num alpha_total lambda_weight batch_num -1 alpha_class alpha_unseen alpha_seen [adjust_alpha_flag]")
+    print("Usage (tuned):  python synthetic_experiment_dp_mm_stale.py theta n_ref n_test calib_num alpha_total lambda_weight batch_num tuning_method_flag [adjust_alpha_flag]")
+    print("Usage (fixed):  python synthetic_experiment_dp_mm_stale.py theta n_ref n_test calib_num alpha_total lambda_weight batch_num -1 alpha_class alpha_unseen alpha_seen [adjust_alpha_flag]")
     quit()
 
 theta = int(sys.argv[1]) # DP concentration parameter
@@ -59,7 +84,7 @@ elif tuning_method_flag == -1:
     tuning_method = 'fixed'
     if len(sys.argv) < 12:
         print("Error: fixed mode requires 3 extra arguments: alpha_class alpha_unseen alpha_seen")
-        print("Usage: python synthetic_experiment_dp_mm.py theta n_ref n_test calib_num alpha_total lambda_weight batch_num -1 alpha_class alpha_unseen alpha_seen [adjust_alpha_flag]")
+        print("Usage: python synthetic_experiment_dp_mm_stale.py theta n_ref n_test calib_num alpha_total lambda_weight batch_num -1 alpha_class alpha_unseen alpha_seen [adjust_alpha_flag]")
         quit()
     alpha_class_fixed = float(sys.argv[9])
     alpha_unseen_fixed = float(sys.argv[10])
@@ -506,7 +531,7 @@ def run_syn_experiment(n_ref, n_test, num_exp, batch_num):
                 beta=None,
                 splitting_method=tuning_method,  # Uses the converted string value
                 verbose=(i == 0),  # Only verbose for first experiment
-                adjust_alpha=adjust_alpha
+                adjust_alpha_stale=adjust_alpha
             )
             # Extract the best loss metrics from tuning results
             best_idx = tuning_results['avg_loss'].idxmin()

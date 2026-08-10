@@ -1,5 +1,9 @@
 #!/bin/bash
-
+#
+# STALE -- superseded by submit_synthetic_experiment_dp_mm_plugin.sh
+# Implements an earlier missing-mass adjustment (mu_hat = M1/n, no cap on
+# alpha_unseen) that does NOT match the paper. Kept only to reproduce the
+# 'CGTC (orig)' / 'CGTC (adj-a)' baselines. Do not use for new runs.
 # List of different theta values to experiment with
 THETA_LIST=(12 25 50 100 200 300 400 500 600 700 800 900 1000 1100 1200 1300 1400 1500)
 
@@ -74,7 +78,7 @@ for BATCH in $BATCH_LIST; do
                 if [[ -f "$OUT_FILE_INT" || -f "$OUT_FILE_DOT" ]]; then
                   echo "Skipping job: $JOBN (output exists: $( [[ -f $OUT_FILE_INT ]] && echo "$OUT_FILE_INT" || echo "$OUT_FILE_DOT" ))"
                 else
-                  SCRIPT="synthetic_experiment_dp_mm.sh $THETA $N_REF $N_TEST $CALIB_NUM $ALPHA_TOTAL_FMT $LAMBDA_WEIGHT_FMT $BATCH $TUNING_METHOD $ADJUST_ALPHA"
+                  SCRIPT="synthetic_experiment_dp_mm_stale.sh $THETA $N_REF $N_TEST $CALIB_NUM $ALPHA_TOTAL_FMT $LAMBDA_WEIGHT_FMT $BATCH $TUNING_METHOD $ADJUST_ALPHA"
                   ORD=$ORDP" -J $JOBN -o $OUTF -e $ERRF $SCRIPT"
                   echo "Submitting job: $JOBN"
                   $ORD
