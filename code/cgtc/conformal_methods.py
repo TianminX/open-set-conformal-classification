@@ -28,12 +28,15 @@ import pdb
 def get_preliminary_sets_naive(
     X_train_calib, Y_train_calib, X_test,
     alpha_prime, black_box, calib_size,
-    random_state=None
+    random_state=None, info=None
 ):
     """
     1) Runs standard SplitConformal with alpha=alpha_prime on the known label space.
     2) Decodes the resulting sets back to original labels.
     3) Returns a list of 'preliminary' sets (in original label space).
+
+    If `info` is a dict, it will be populated with `info['n_calib']` = the
+    realized calibration set size used by the underlying splitter.
     """
     # if random_state is not None:
     #     np.random.seed(random_state)
@@ -52,6 +55,8 @@ def get_preliminary_sets_naive(
         alpha_prime,
         calib_num
     )
+    if info is not None:
+        info['n_calib'] = method_sc.n_calib
     encoded_preliminary_sets  = method_sc.predict(X_test)
 
     # Decode each set to the original label space
@@ -67,12 +72,15 @@ def get_preliminary_sets_naive(
 def get_preliminary_sets_naive_full(
     X_train_calib, Y_train_calib, X_test,
     alpha_prime, black_box, calib_size,
-    random_state=None
+    random_state=None, info=None
 ):
     """
     1) Runs full SplitConformalFull with alpha=alpha_prime on the known label space.
     2) Decodes the resulting sets back to original labels.
     3) Returns a list of 'preliminary' sets (in original label space).
+
+    If `info` is a dict, it will be populated with `info['n_calib']` = the
+    realized calibration set size used by the underlying splitter.
     """
     # if random_state is not None:
     #     np.random.seed(random_state)
@@ -91,6 +99,8 @@ def get_preliminary_sets_naive_full(
         alpha_prime,
         calib_num
     )
+    if info is not None:
+        info['n_calib'] = method_sc.n_calib
     encoded_preliminary_sets  = method_sc.predict(X_test)
 
     # Decode each set to the original label space
@@ -105,8 +115,12 @@ def get_preliminary_sets_naive_full(
 def get_preliminary_sets_Bernoulli(
     X_train_calib, Y_train_calib, X_test,
     alpha_prime, black_box, calibration_probability,
-    random_state=None
+    random_state=None, info=None
 ):
+    """
+    If `info` is a dict, it will be populated with `info['n_calib']` = the
+    realized calibration set size used by the underlying Bernoulli splitter.
+    """
     # Encode
     label_encoder = LabelEncoder()
     Y_train_calib_encoded = label_encoder.fit_transform(Y_train_calib)
@@ -120,6 +134,8 @@ def get_preliminary_sets_Bernoulli(
         calibration_probability,
         random_state=random_state
     )
+    if info is not None:
+        info['n_calib'] = method_bs.n_calib
     encoded_preliminary_sets = method_bs.predict(X_test)
 
     # Decode each set to the original label space.
@@ -135,12 +151,15 @@ def get_preliminary_sets_Bernoulli(
 def get_preliminary_sets_benchmark(
     X_train_calib, Y_train_calib, X_test,
     alpha, black_box, calib_size,
-    random_state=None
+    random_state=None, info=None
 ):
     """
     1) Runs standard SplitConformal with alpha=alpha_prime on the known label space.
     2) Decodes the resulting sets back to original labels.
     3) Returns a list of 'preliminary' sets (in original label space).
+
+    If `info` is a dict, it will be populated with `info['n_calib']` = the
+    realized calibration set size used by the underlying splitter.
     """
     # if random_state is not None:
     #     np.random.seed(random_state)
@@ -159,6 +178,8 @@ def get_preliminary_sets_benchmark(
         alpha,
         calib_num
     )
+    if info is not None:
+        info['n_calib'] = method_sc.n_calib
     encoded_preliminary_sets  = method_sc.predict(X_test)
 
     # Decode each set to the original label space

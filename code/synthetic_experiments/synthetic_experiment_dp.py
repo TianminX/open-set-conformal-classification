@@ -28,13 +28,13 @@ from testing import select_beta_cv
 #####################
 
 # Parse command-line arguments
-# Tuned mode:  python synthetic_experiment_dp.py theta n_ref n_test calib_num alpha_total lambda_weight batch_num tuning_method_flag
-# Fixed mode:  python synthetic_experiment_dp.py theta n_ref n_test calib_num alpha_total lambda_weight batch_num -1 alpha_class alpha_unseen alpha_seen
+# Tuned mode:  python synthetic_experiment_dp.py theta n_ref n_test calib_num alpha_total lambda_weight batch_num tuning_method_flag [occ_name] [beta_cv]
+# Fixed mode:  python synthetic_experiment_dp.py theta n_ref n_test calib_num alpha_total lambda_weight batch_num -1 alpha_class alpha_unseen alpha_seen [occ_name] [beta_cv]
 
 if len(sys.argv) < 9:
     print("Error: incorrect number of parameters.")
-    print("Usage (tuned):  python synthetic_experiment_dp.py theta n_ref n_test calib_num alpha_total lambda_weight batch_num tuning_method_flag")
-    print("Usage (fixed):  python synthetic_experiment_dp.py theta n_ref n_test calib_num alpha_total lambda_weight batch_num -1 alpha_class alpha_unseen alpha_seen")
+    print("Usage (tuned):  python synthetic_experiment_dp.py theta n_ref n_test calib_num alpha_total lambda_weight batch_num tuning_method_flag [occ_name] [beta_cv]")
+    print("Usage (fixed):  python synthetic_experiment_dp.py theta n_ref n_test calib_num alpha_total lambda_weight batch_num -1 alpha_class alpha_unseen alpha_seen [occ_name] [beta_cv]")
     quit()
 
 theta = int(sys.argv[1]) # DP concentration parameter
@@ -49,21 +49,30 @@ tuning_method_flag = int(sys.argv[8])  # 0 for 'random', 1 for 'bernoulli', -1 f
 # Convert flag to string for internal use
 if tuning_method_flag == 0:
     tuning_method = 'random'
+    extra_args = sys.argv[9:]
 elif tuning_method_flag == 1:
     tuning_method = 'bernoulli'
+    extra_args = sys.argv[9:]
 elif tuning_method_flag == -1:
     tuning_method = 'fixed'
-    if len(sys.argv) != 12:
+    if len(sys.argv) < 12:
         print("Error: fixed mode requires 3 extra arguments: alpha_class alpha_unseen alpha_seen")
-        print("Usage: python synthetic_experiment_dp.py theta n_ref n_test calib_num alpha_total lambda_weight batch_num -1 alpha_class alpha_unseen alpha_seen")
+        print("Usage: python synthetic_experiment_dp.py theta n_ref n_test calib_num alpha_total lambda_weight batch_num -1 alpha_class alpha_unseen alpha_seen [occ_name] [beta_cv]")
         quit()
     alpha_class_fixed = float(sys.argv[9])
     alpha_unseen_fixed = float(sys.argv[10])
     alpha_seen_fixed = float(sys.argv[11])
     print(f"Fixed alphas: alpha_class={alpha_class_fixed}, alpha_unseen={alpha_unseen_fixed}, alpha_seen={alpha_seen_fixed}")
+    extra_args = sys.argv[12:]
 else:
     print(f"Error: tuning_method must be 0 (random) or 1 (bernoulli) or -1 (using fixed alpha), got '{tuning_method_flag}'")
     quit()
+
+# Optional trailing arguments: one-class classifier and beta CV flag
+# occ_name: 'lof', 'iforest', 'ocsvm' (default 'lof')
+occ_name = extra_args[0] if len(extra_args) >= 1 else 'lof'
+# beta_cv: whether to use CV to choose beta (default True)
+beta_cv = extra_args[1].lower() in ('true', '1', 'yes') if len(extra_args) >= 2 else True
 
 
 
@@ -81,11 +90,7 @@ print(f"alpha tuning_method: {tuning_method} (flag={tuning_method_flag})")
 # Using power weights to combine the p-values for testing individual hypothesis for seen hypothesis
 # If default_beta is not none, use it. If default_beta is None, use optimal weights
 default_beta = 1.6
-# If beta_cv is true, use CV to choose beta
-beta_cv = True
-
-# One-class classifier choice: 'lof', 'iforest', 'ocsvm'
-occ_name = 'lof'
+# beta_cv and occ_name are set from command-line arguments
 
 
 # Print parsed parameters
@@ -97,6 +102,8 @@ print(f"calib_size: {calib_size}")
 print(f"alpha_total: {alpha_total}")
 print(f"lambda_weight: {lambda_weight}")
 print(f"batch_num: {batch_num}")
+print(f"occ_name: {occ_name}")
+print(f"beta_cv: {beta_cv}")
 
 
 
@@ -110,10 +117,10 @@ print(f"batch_num: {batch_num}")
 beta_label = "betacv" if beta_cv else f"beta{default_beta}"
 output_file = (
     # f"results/dp_tuned_mixed_labels/"
-    f"results/dp_tuned_mixed_labels/rebuttal/"
+    f"results/dp_tuned_mixed_labels/rebuttal/2026-05-06/"
     f"dp_"
     f"occ{occ_name}_"
-    f"{beta_label}_"
+    f"beta{beta_label}_"
     f"theta{theta}_"
     f"nref{n_ref}_"
     f"ntest{n_test}_"
@@ -173,10 +180,46 @@ classifier = black_boxes.OpenSetKNN(
 
 # One-class classification model for computing feature-dependent GT p-values
 
+class _AdaptiveOCSVM:
+    """OCSVM with gamma chosen via the median 1NN distance of training data.
+
+    Why this works:
+      X = Y + N(0, sigma) with sigma=5e-6, so clusters sit at positions y_k on
+      the diagonal with typical inter-cluster spacing ~ 1/K (K = # unique labels).
+      gamma='scale' = 1/(d * Var(X)) ~ 4, which gives RBF bandwidth >> spacing,
+      so kernel(x_i, x_j) ~ 1 for all pairs and the OCSVM cannot separate clusters.
+      Setting gamma = 1 / (2 * d_median^2), where d_median is the median 1NN
+      distance in the training set, ensures the kernel drops to ~0.6 at exactly
+      one nearest-neighbor gap -- tight enough to reject points from unseen clusters
+      while accepting singletons near a known cluster.
+      This adapts automatically as theta (and thus K) varies across experiments.
+    """
+    def __init__(self, nu=0.01):
+        self.nu = nu
+        self._model = None
+
+    def fit(self, X):
+        from sklearn.neighbors import NearestNeighbors
+        nn = NearestNeighbors(n_neighbors=2).fit(X)
+        dists, _ = nn.kneighbors(X)
+        median_d = np.median(dists[:, 1])          # median 1NN distance
+        gamma = 1.0 / (2.0 * median_d ** 2 + 1e-30)
+        self._model = OneClassSVM(kernel='rbf', gamma=gamma, nu=self.nu)
+        self._model.fit(X)
+        return self
+
+    def score_samples(self, X):
+        return self._model.score_samples(X)
+
+
 occ_choices = {
     'lof':     LocalOutlierFactor(n_neighbors=1, novelty=True),
-    'iforest': IsolationForest(n_estimators=10, contamination='auto', random_state=batch_num),
-    'ocsvm':   OneClassSVM(kernel='rbf', nu = 0.05),
+    # max_samples=1.0: default min(256, n) subsamples miss cluster positions,
+    # destroying the inter-cluster gap signal.
+    'iforest': IsolationForest(n_estimators=100, max_samples=1.0,
+                               contamination='auto', random_state=batch_num),
+    # gamma='scale' is O(1) but inter-cluster spacing is O(1/K); adaptive gamma fixes this.
+    'ocsvm':   _AdaptiveOCSVM(nu=0.01),
 }
 
 if occ_name not in occ_choices:
@@ -309,13 +352,17 @@ def analyze_data(X_ref, Y_ref, X_test, Y_test, methods_list,
     for method_name, method_function in methods_list.items():
         tqdm.write(f"Begin running {method_name}")
 
+        # Capture realized calibration set size from the underlying splitter
+        splitter_info = {}
+
         if method_name == 'Method (benchmark)' or method_name == 'Method (benchmark full)':
             decoded_prelim_sets = method_function(
                 X_ref, Y_ref, X_test,
                 alpha=alpha_unseen + alpha_seen + alpha_class,
                 black_box=classifier,
                 calib_size=calib_size,
-                random_state=random_state
+                random_state=random_state,
+                info=splitter_info
             )
         elif method_name == 'Method (Bernoulli benchmark)' or method_name == 'Method (Bernoulli benchmark full)':
             decoded_prelim_sets = method_function(
@@ -323,7 +370,8 @@ def analyze_data(X_ref, Y_ref, X_test, Y_test, methods_list,
                 alpha_prime=alpha_unseen + alpha_seen + alpha_class,
                 black_box=classifier,
                 calibration_probability=calib_prob_adjusted,  # Use adjusted function
-                random_state=random_state
+                random_state=random_state,
+                info=splitter_info
             )
         elif method_name == 'Method (Bernoulli)' or method_name == 'Method (Bernoulli full)' or method_name == 'Method (Bernoulli uniform)':
             decoded_prelim_sets = method_function(
@@ -331,7 +379,8 @@ def analyze_data(X_ref, Y_ref, X_test, Y_test, methods_list,
                 alpha_prime=alpha_class,
                 black_box=classifier,
                 calibration_probability=calib_prob_adjusted,  # Use adjusted function
-                random_state=random_state
+                random_state=random_state,
+                info=splitter_info
             )
         else:
             decoded_prelim_sets = method_function(
@@ -339,8 +388,11 @@ def analyze_data(X_ref, Y_ref, X_test, Y_test, methods_list,
                 alpha_prime=alpha_class,
                 black_box=classifier,
                 calib_size=calib_size,
-                random_state=random_state
+                random_state=random_state,
+                info=splitter_info
             )
+
+        n_calib_realized = splitter_info.get('n_calib', np.nan)
 
         # For each p-value approach
         for pvalue_method in ['GT', 'XGT', 'RGT']:
@@ -367,6 +419,7 @@ def analyze_data(X_ref, Y_ref, X_test, Y_test, methods_list,
             new_results['method'] = method_name
             new_results['pvalue_method'] = pvalue_method
             new_results['num_unique_labels'] = num_unique_labels
+            new_results['n_calib_realized'] = n_calib_realized
 
             # Add proportion of unseen test labels to results
             new_results['prop_unseen_test'] = prop_unseen
@@ -379,7 +432,7 @@ def analyze_data(X_ref, Y_ref, X_test, Y_test, methods_list,
             new_results['occ'] = occ_name
 
             if beta_cv:
-                new_results['beta'] = best_beta
+                new_results['CV_selected_beta'] = best_beta
 
             # Append the results to the DataFrame
             results_df = pd.concat([results_df, new_results])

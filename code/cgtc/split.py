@@ -60,6 +60,7 @@ class BernoulliSplitConformal:
         X_train, Y_train = X[train_idx], Y[train_idx]
         X_calib, Y_calib = X[calib_idx], Y[calib_idx]
         n2 = len(Y_calib)
+        self.n_calib = n2
         tqdm.write(f"Bernoulli: Size of all data: {n}. Size of calibration set: {n2}. ")
 
         # Fit the black_box classifier on the training set.
@@ -321,6 +322,7 @@ class BernoulliSplitConformalFull:
         X_train, Y_train = X[train_idx], Y[train_idx]
         X_calib, Y_calib = X[calib_idx], Y[calib_idx]
         n2 = len(Y_calib)
+        self.n_calib = n2
         X_train, Y_train = X, Y
         tqdm.write(f"Bernoulli: Size of all data: {n}. Size of calibration set: {n2}. ")
 
@@ -526,6 +528,7 @@ class TestBernoulliSplitConformal:
         X_train, Y_train = X[train_idx], Y[train_idx]
         X_calib, Y_calib = X[calib_idx], Y[calib_idx]
         n2 = len(Y_calib)
+        self.n_calib = n2
         tqdm.write(f"Bernoulli: Size of all data: {n}. Size of calibration set: {n2}. ")
 
         # Fit the black_box classifier on the training set.
@@ -689,6 +692,7 @@ class SplitConformal:
         # Split data into training/calibration sets
         X_train, X_calib, Y_train, Y_calib = train_test_split(X, Y, test_size=calib_size, random_state=random_state)
         n2 = X_calib.shape[0]
+        self.n_calib = n2
 
         tqdm.write(f"Random split: Size of all data: {len(Y)}. Size of calibration set: {n2}. ")
 
@@ -1268,6 +1272,7 @@ class SplitConformalFull:
         X_train, X_calib, Y_train, Y_calib = train_test_split(X, Y, test_size=calib_size, random_state=random_state)
         X_train, Y_train = X, Y
         n2 = X_calib.shape[0]
+        self.n_calib = n2
 
         tqdm.write(f"Random split: Size of all data: {len(Y)}. Size of calibration set: {n2}. ")
 
