@@ -188,7 +188,7 @@ class AdaptiveBandwidthOCSVM:
     alpha tuning like the plain sklearn models.
     """
 
-    def __init__(self, nu=0.05):
+    def __init__(self, nu=0.01):
         self.nu = nu
         self.gamma_ = None
         self.model_ = None
@@ -214,7 +214,7 @@ class AdaptiveBandwidthOCSVM:
 occ_choices = {
     'lof':     LocalOutlierFactor(n_neighbors=1, novelty=True),
     'iforest': IsolationForest(n_estimators=100, max_samples=1.0, contamination='auto', random_state=batch_num),
-    'ocsvm':   AdaptiveBandwidthOCSVM(nu=0.05),
+    'ocsvm':   AdaptiveBandwidthOCSVM(nu=0.01),
 }
 
 if occ_name not in occ_choices:
