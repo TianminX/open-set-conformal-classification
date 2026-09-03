@@ -4,7 +4,7 @@ library(scales)
 library(ggh4x)
 
 # 1. Load data from OpenMax experiment results
-df_openmax <- list.files("results_hpc/dp_openmax/",
+df_openmax <- list.files("results_hpc/dp_openmax_no_selective/",
                          pattern = "\\.csv$", full.names = TRUE) %>%
   map_dfr(~ fread(.x))
 

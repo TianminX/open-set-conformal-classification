@@ -38,9 +38,12 @@ TIME=00-10:00:00                     # Time required
 # SBATCH command template
 ORDP="sbatch --mem="$MEMO" --nodes=1 --ntasks=1 --cpus-per-task=1 --time="$TIME
 
+# Results directory for this run
+# NOTE: must match the output_file path in synthetic_experiment_dp.py
+RESULTS_DIR="results/dp_tuned_mixed_labels/rebuttal/2026-08-24"
+
 # Ensure the results and logs directories exist
-# NOTE: Python script writes to results/dp_tuned_mixed_labels/rebuttal/2026-05-06/
-mkdir -p "results/dp_tuned_mixed_labels/rebuttal/2026-05-06/"
+mkdir -p "$RESULTS_DIR/"
 mkdir -p "logs/dp/"
 
 # Loop through all combinations
@@ -71,7 +74,7 @@ for BATCH in $BATCH_LIST; do
                     ERRF="logs/dp/${JOBN}.err"
 
                     # Check for existing output
-                    OUT_FILE="results/dp_tuned_mixed_labels/rebuttal/2026-05-06/dp_occ${OCC_NAME}_beta${BETA_LABEL}_theta${THETA}_nref${N_REF}_ntest${N_TEST}_cs${CALIB_NUM}_atotal${ALPHA_TOTAL_FMT}_lambda${LAMBDA_WEIGHT_FMT}_tune${TUNING_METHOD}_batch${BATCH}.csv"
+                    OUT_FILE="${RESULTS_DIR}/dp_occ${OCC_NAME}_beta${BETA_LABEL}_theta${THETA}_nref${N_REF}_ntest${N_TEST}_cs${CALIB_NUM}_atotal${ALPHA_TOTAL_FMT}_lambda${LAMBDA_WEIGHT_FMT}_tune${TUNING_METHOD}_batch${BATCH}.csv"
 
                     if [[ -f "$OUT_FILE" ]]; then
                       echo "Skipping job: $JOBN (output exists: $OUT_FILE)"
