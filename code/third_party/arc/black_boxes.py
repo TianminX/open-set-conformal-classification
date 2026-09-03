@@ -4,6 +4,8 @@ from sklearn import ensemble
 from sklearn import calibration
 from sklearn.neural_network import MLPClassifier
 from sklearn.neighbors import KNeighborsClassifier
+from sklearn.neighbors import LocalOutlierFactor
+from sklearn.base import clone as sk_clone
 from sklearn.linear_model import LogisticRegression
 from sklearn.naive_bayes import GaussianNB
 from scipy.stats import weibull_min
@@ -1522,6 +1524,86 @@ class MSPOpenSet:
         p_seen = p_seen / p_seen.sum(axis=1)[:, None]
 
         s = 1.0 - p_seen.max(axis=1)
+
+        return np.hstack([p_seen * (1.0 - s)[:, None], s[:, None]])
+
+
+class OCCOpenSet:
+    """KNN closed-set classifier + one-class-classifier unknown score.
+
+    The unknown column is the novelty score of a one-class classifier fit
+    on the training split: by default the same LOF configuration
+    (LocalOutlierFactor(n_neighbors=1, novelty=True)) that the CGTC
+    pipeline uses inside its feature-based XGT p-values, so the score
+    carries exactly the ranking information available to CGTC's unseen-label
+    test. The raw LOF value (-score_samples) is shifted by occ_offset
+    (default 1.0, the theoretical inlier LOF value at the density-match
+    point, so inliers land near 0 and the multiplicative GT recalibration
+    retains a real novel-vs-seen contrast), divided by occ_scale, and
+    clipped to [0, 1]; the scale constant is arbitrary and is absorbed by
+    GTRecalOpenSet, which anchors the average unknown mass at the
+    Good-Turing level.
+
+    The seen-class columns are the plain KNN probabilities scaled by
+    (1 - s); their relative magnitudes are untouched. Like KNNDistOpenSet,
+    no per-class fitting is involved, so singleton classes cost nothing.
+    """
+
+    def __init__(self,
+                 n_neighbors=5,
+                 weights='uniform',
+                 algorithm='auto',
+                 leaf_size=30,
+                 p=2,
+                 metric='minkowski',
+                 metric_params=None,
+                 n_jobs=None,
+                 clip_proba_factor=0.1,
+                 occ=None,
+                 occ_scale=2.0,
+                 occ_offset=1.0):
+        self.model = KNeighborsClassifier(
+            n_neighbors=n_neighbors,
+            weights=weights,
+            algorithm=algorithm,
+            leaf_size=leaf_size,
+            p=p,
+            metric=metric,
+            metric_params=metric_params,
+            n_jobs=n_jobs
+        )
+        self.occ = occ if occ is not None else LocalOutlierFactor(
+            n_neighbors=1, novelty=True)
+        self.factor = clip_proba_factor
+        self.occ_scale = occ_scale
+        self.occ_offset = occ_offset
+
+    def fit(self, X, y):
+        self.classes_ = np.unique(y)
+        self.num_classes = len(self.classes_)
+        self.n_train = len(y)
+        self.model_fit = self.model.fit(X, y)
+        # Fresh clone per fit so refits (e.g. inside GTRecalOpenSet) do not
+        # share state with earlier copies.
+        self.occ_fit = sk_clone(self.occ).fit(X)
+        return copy.deepcopy(self)
+
+    def predict(self, X):
+        return self.model_fit.predict(X)
+
+    def predict_proba(self, X, y_calib=None):
+        """Return (n, K+1) probability matrix.  y_calib is unused."""
+        if X.ndim == 1:
+            X = X.reshape(1, -1)
+
+        p_seen = self.model_fit.predict_proba(X)
+        p_seen = np.clip(p_seen, self.factor / self.num_classes, 1.0)
+        p_seen = p_seen / p_seen.sum(axis=1)[:, None]
+
+        # score_samples returns the negative LOF value (higher = more
+        # normal); negate so larger s_raw = more novel.
+        s_raw = -self.occ_fit.score_samples(X)
+        s = np.clip((s_raw - self.occ_offset) / self.occ_scale, 0.0, 1.0)
 
         return np.hstack([p_seen * (1.0 - s)[:, None], s[:, None]])
 
