@@ -170,3 +170,16 @@ results/
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 #.idea/
 .Rproj.user
+
+# R session artifacts
+.Rhistory
+.RData
+*.Rproj
+Rplots.pdf
+
+# Aggregated experiment results and generated figures
+results_hpc/
+code/**/*.pdf
+
+# Editors
+.vscode/
