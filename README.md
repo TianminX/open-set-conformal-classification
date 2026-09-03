@@ -10,37 +10,14 @@ Accompanying paper: *Conformal Inference for Open-Set and Imbalanced Classificat
 
 ```
 code/
-  CGTC_Demo.ipynb                       Notebook walkthrough of the method
-  cgtc/                                 Core CGTC implementation
-    conformal_methods.py                Conformal prediction sets: CGTC and standard split
-                                        conformal, with random or Bernoulli (selective) splitting
-    testing.py                          GT / RGT / XGT conformal p-values and the
-                                        unseen-label hypothesis test
-    split.py                            Standard and Bernoulli selective sample splitting
-    alpha_tune_function.py              Data-driven alpha allocation (cross-validation)
-    alpha_tune_plugin.py                Plug-in missing-mass alpha allocation
-    distributions*.py                   Data-generating utilities for the synthetic experiments
-    utils.py                            Shared helpers
-  synthetic_experiments/
-    synthetic_experiment_dp.py          Dirichlet process simulations (main experiment)
-    synthetic_experiment_dp_mm_plugin.py  Missing-mass plug-in allocation variant
-    synthetic_experiment_*.py           Benchmarks and ablations (OpenMax, EVM, hybrids)
-    submit_*.sh                         Batch wrappers with the parameter grids of the paper
-    dp_mm_plugin_paper_plots.R          Main figures for the synthetic experiments
-    beta_sensitivity_dp_plot.R          Beta sensitivity figures
-    dp_vary_occ_plots.R                 One-class-classifier ablation figures
-  real_experiment/
-    data_prep/                          CelebA preprocessing: MTCNN crops + FaceNet embeddings
-    real_experiment_celeb.py            CGTC pipeline on the CelebA embeddings
-    real_experiment_celeb_mm_plugin.py  Missing-mass plug-in allocation variant
-    real_experiment_celeb_*.py          Open-set benchmarks (OpenMax, PROSER, KNN scores, OCC)
-    celeb_mm_plugin_paper_plots.R       Main figures for the real-data experiments
-    real_celeb_compare_*.R              Benchmark comparison figures
-    make_openset_benchmark_table.py     Benchmark comparison table
-  third_party/
-    arc/                                Set-valued classification utilities
-    keras-facenet/                      FaceNet architecture used for the embeddings
-dependencies.txt                        Tested package versions
+  CGTC_Demo.ipynb          Notebook walkthrough of the method
+  cgtc/                    Core CGTC implementation: conformal prediction sets,
+                           Good–Turing p-values, selective splitting, alpha allocation
+  synthetic_experiments/   Dirichlet process simulations, benchmarks, and figure scripts
+  real_experiment/         CelebA experiments: data preparation, CGTC pipeline,
+                           open-set benchmarks, and figure/table scripts
+  third_party/             Set-valued classification utilities and the FaceNet architecture
+dependencies.txt           Tested package versions
 ```
 
 ## Installation
