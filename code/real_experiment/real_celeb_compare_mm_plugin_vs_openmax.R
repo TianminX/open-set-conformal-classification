@@ -94,7 +94,18 @@ read_dir <- function(path) {
 }
 
 cat("=== Loading mm_plugin (", MM_DIR, ") ===\n")
-df_mm_all <- read_dir(MM_DIR)
+# betacv files only, batches 1-20 only, filtered on the FILENAME to match
+# celeb_mm_plugin_paper_plots.R: the beta1.6 files duplicate the betacv runs
+# bit-for-bit (the tuned alpha_seen is 0, so beta never enters the final sets)
+# and batches above 20 are not used by the paper figures.
+mm_files <- list.files(MM_DIR, pattern = "^celeb_betacv_.*\\.csv$", full.names = TRUE)
+mm_batch <- suppressWarnings(as.integer(sub(".*_batch_(\\d+)\\.csv$", "\\1", basename(mm_files))))
+mm_files <- mm_files[!is.na(mm_batch) & mm_batch >= 1 & mm_batch <= 20]
+cat("  reading", length(mm_files), "betacv files (batches 1-20)\n")
+df_mm_all <- map_dfr(mm_files, ~ {
+  dt <- fread(.x)
+  dt[, which(!duplicated(names(dt))), with = FALSE]
+})
 cat("  rows:", nrow(df_mm_all), "\n")
 
 cat("=== Loading OpenMax direct (", OPENMAX_DIR, ") ===\n")

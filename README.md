@@ -10,7 +10,8 @@ Accompanying paper: *Conformal Inference for Open-Set and Imbalanced Classificat
 
 ```
 code/
-  CGTC_Demo.ipynb          Notebook walkthrough of the method
+  CGTC_Demo.ipynb          Notebook walkthrough of the original CGTC method
+  CGTC_Plus_Demo.ipynb     Notebook walkthrough of CGTC+ (plug-in missing-mass allocation)
   cgtc/                    Core CGTC implementation: conformal prediction sets,
                            Good–Turing p-values, selective splitting, alpha allocation
   synthetic_experiments/   Dirichlet process simulations, benchmarks, and figure scripts
