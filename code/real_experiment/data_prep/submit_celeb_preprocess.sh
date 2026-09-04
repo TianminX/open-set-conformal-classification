@@ -2,12 +2,7 @@
 
 # Parameters
 total_images=202599
-<<<<<<< Updated upstream
 batch_size=500
-=======
-#total_images=10
-batch_size=1000
->>>>>>> Stashed changes
 
 # Calculate the number of batches
 num_batches=$(( (total_images + batch_size - 1) / batch_size ))
@@ -15,17 +10,12 @@ batch_list=$(seq 1 $num_batches)
 #batch_list=$(seq 1 2)
 
 # Slurm parameters
-<<<<<<< Updated upstream
-MEMO=3G                             # Memory required (1 GB)
-TIME=00-00:30:00                    # Time required (2 h)
-=======
-MEMO=1G                             # Memory required (1 GB)
-TIME=00-02:00:00                    # Time required (2 h)
->>>>>>> Stashed changes
-CORE=1                              # Cores required (1)
+MEMO=3G                             # Memory required
+TIME=00-00:30:00                    # Time required
+CORE=1                              # Cores required
 
 # Assemble order                                               prefix
-ORDP="sbatch --mem="$MEMO" --nodes=1 --ntasks=1 --cpus-per-task=1 --time="$TIME" --account=sesia_1124 --partition=main"
+ORDP="sbatch --mem="$MEMO" --nodes=1 --ntasks=1 --cpus-per-task=1 --time="$TIME
 
 # Create directory for log files
 LOGS="logs/celeb_preprocess"
