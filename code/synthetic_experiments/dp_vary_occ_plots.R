@@ -15,20 +15,15 @@ library(ggh4x)
 # Data: results_hpc/dp_tuned_mixed_labels/vary_occ/ (CV-beta rerun via
 # synthetic_experiment_dp_vary_occ.py: adaptive-bandwidth OCSVM and
 # 100-tree Isolation Forest, tune0 + tune-1; only tune0 is plotted).
-# Run from code/synthetic_experiments/. Supersedes
-# openset_rebuttal/openset_rebuttal/openset_rebuttal_vary_occ_plots.R.
-# Outputs (written here and copied to the manuscript's
-# response_figures/vary_occ/):
+# Run from code/synthetic_experiments/. Outputs (written to figures/):
 #   dp_four_panel_s1_<occ>.pdf           (3 panels)
 #   dp_pvalue_propjoker_s1_<occ>.pdf     (reference line added)
 #   dp_cond_cov_four_levels_s1_<occ>.pdf
 # ============================================================
 
 idir <- "results_hpc/dp_tuned_mixed_labels/vary_occ"
-fig.dir <- "."
-ms.fig.dir <- file.path("..", "..",
-                        "Open_Set_Conformal_Classification",
-                        "response_figures", "vary_occ")
+fig.dir <- "figures"
+dir.create(fig.dir, showWarnings = FALSE)
 
 # 1. Load data
 df_all <- list.files(idir, pattern = "\\.csv$", full.names = TRUE) %>%
@@ -178,8 +173,7 @@ for (occ_method in c("iforest", "ocsvm")) {
   print(p_three)
   ofile <- sprintf("dp_four_panel_s1_%s.pdf", occ_method)
   ggsave(file.path(fig.dir, ofile), p_three, width = 13.5, height = 3.5, units = "in")
-  file.copy(file.path(fig.dir, ofile), file.path(ms.fig.dir, ofile), overwrite = TRUE)
-  cat(sprintf(">>> wrote %s (3-panel layout)\n", ofile))
+  cat(sprintf(">>> wrote %s (3-panel layout)\n", file.path(fig.dir, ofile)))
 
   # 5. P-value comparison (joker proportion) with reference line
   df_single <- df_theta %>% filter(method == "CGTC (random)")
@@ -215,8 +209,7 @@ for (occ_method in c("iforest", "ocsvm")) {
   print(p_pj)
   ofile <- sprintf("dp_pvalue_propjoker_s1_%s.pdf", occ_method)
   ggsave(file.path(fig.dir, ofile), p_pj, width = 6.5, height = 3, units = "in")
-  file.copy(file.path(fig.dir, ofile), file.path(ms.fig.dir, ofile), overwrite = TRUE)
-  cat(sprintf(">>> wrote %s (reference line added)\n", ofile))
+  cat(sprintf(">>> wrote %s (reference line added)\n", file.path(fig.dir, ofile)))
 
   # 6. Conditional coverage stratified by label frequency
   df_cond <- df_theta %>%
@@ -255,8 +248,7 @@ for (occ_method in c("iforest", "ocsvm")) {
   print(p_cond)
   ofile <- sprintf("dp_cond_cov_four_levels_s1_%s.pdf", occ_method)
   ggsave(file.path(fig.dir, ofile), p_cond, width = 11.5, height = 3.5, units = "in")
-  file.copy(file.path(fig.dir, ofile), file.path(ms.fig.dir, ofile), overwrite = TRUE)
-  cat(sprintf(">>> wrote %s\n", ofile))
+  cat(sprintf(">>> wrote %s\n", file.path(fig.dir, ofile)))
 }
 
 cat("\nAll done.\n")
