@@ -1586,7 +1586,51 @@ class OCCOpenSet:
         # Fresh clone per fit so refits (e.g. inside GTRecalOpenSet) do not
         # share state with earlier copies.
         self.occ_fit = sk_clone(self.occ).fit(X)
+        # 'auto' normalization for one-class scores with arbitrary units
+        # (isolation forest, one-class SVM): offset and scale are the 1st
+        # percentile and the 1st-to-99th percentile range of OUT-OF-SAMPLE
+        # scores, obtained from an internal 80/20 split of the training data
+        # (fit on 80%, score the held-out 20%), so the raw unknown score lies
+        # in [0, 1] on fresh data without any label information. In-sample
+        # scores would be useless here: an OCSVM scores its own training
+        # points far higher than any new point (no self-kernel term), so a
+        # training-based range maps every test point to 1. The LOF keeps its
+        # explicit inlier offset (1.0) and scale (2.0).
+        if self.occ_offset == 'auto' or self.occ_scale == 'auto':
+            n = len(X)
+            rng = np.random.default_rng(0)
+            perm = rng.permutation(n)
+            n2 = max(1, int(0.2 * n))
+            idx2, idx1 = perm[:n2], perm[n2:]
+            occ_tmp = sk_clone(self.occ).fit(X[idx1])
+            s_hold = self._raw_score(occ_tmp, X[idx2])
+            lo, hi = (float(v) for v in np.percentile(s_hold, [1.0, 99.0]))
+        self.offset_ = lo if self.occ_offset == 'auto' else float(self.occ_offset)
+        self.scale_ = (max(hi - self.offset_, 1e-12) if self.occ_scale == 'auto'
+                       else float(self.occ_scale))
         return copy.deepcopy(self)
+
+    @staticmethod
+    def _raw_score(occ_fit, X):
+        """Raw novelty score (larger = more novel) of a fitted one-class model.
+
+        score_samples returns 'normality' (higher = more normal), so it is
+        negated. For a one-class SVM the kernel expansion is first divided by
+        the sum of the dual coefficients (libsvm's one-class problem
+        constrains it to nu times the training size), which turns it into a
+        size-free kernel average in (0, 1]; without this the score grows with
+        the training size, so a normalization or recalibration learned on a
+        model fit to part of the data does not transfer to the model refit on
+        all of it. The novelty score is then minus the log of that average,
+        a smooth minimum distance to the training points: the average itself
+        ranges over many orders of magnitude (exp(-gamma d^2)), which would
+        let a handful of points dictate any range-based normalization.
+        """
+        if hasattr(occ_fit, 'dual_coef_') and hasattr(occ_fit, 'nu'):
+            total = float(np.abs(occ_fit.dual_coef_).sum())
+            kavg = occ_fit.score_samples(X) / (total if total > 0 else 1.0)
+            return -np.log(np.maximum(kavg, 1e-300))
+        return -occ_fit.score_samples(X)
 
     def predict(self, X):
         return self.model_fit.predict(X)
@@ -1600,10 +1644,10 @@ class OCCOpenSet:
         p_seen = np.clip(p_seen, self.factor / self.num_classes, 1.0)
         p_seen = p_seen / p_seen.sum(axis=1)[:, None]
 
-        # score_samples returns the negative LOF value (higher = more
-        # normal); negate so larger s_raw = more novel.
-        s_raw = -self.occ_fit.score_samples(X)
-        s = np.clip((s_raw - self.occ_offset) / self.occ_scale, 0.0, 1.0)
+        # raw novelty score (negated score_samples; size-normalized for the
+        # one-class SVM), mapped to [0, 1] with the offset and scale set in fit
+        s_raw = self._raw_score(self.occ_fit, X)
+        s = np.clip((s_raw - self.offset_) / self.scale_, 0.0, 1.0)
 
         return np.hstack([p_seen * (1.0 - s)[:, None], s[:, None]])
 
@@ -1822,13 +1866,41 @@ class GTRecalOpenSet:
 
     If the held-out mean s_bar is degenerate (~0) or there are no training
     singletons, falls back to the constant p_gt column (the GT baseline).
+
+    mode : {'scale', 'center', 'isotonic'}
+        How the raw unknown score s is transformed before the Good-Turing
+        anchoring. All three use the same internal holdout and only training
+        data; the pseudo-novelty label of a holdout point is whether its
+        identity is absent from the (1 - recal_frac) part the scoring copy
+        was fit on.
+        'scale'    : t(s) = s. The original multiplicative recalibration; it
+                     preserves the ratio between the average unknown mass of
+                     novel and of seen points, so a score with a floor on
+                     seen points keeps it.
+        'center'   : t(s) = max(s - s0, 0), where s0 is the median holdout
+                     score of the pseudo-seen points (identity present in
+                     the fit part). Generalizes the inlier-value centering of
+                     the LOF score to any score: a typical seen point gets
+                     unknown mass zero, and only the excess over the seen
+                     level is rescaled.
+        'isotonic' : t(s) = g(s), with g the isotonic regression of the
+                     pseudo-novelty indicator on s over the holdout, i.e. a
+                     monotone estimate of P(novel | s). Invariant to any
+                     monotone transformation of s (offset, scale, floor).
+        In every mode p_unk(x) = min(c * t(s(x)), cap) with c = p_gt / mean
+        of t over the holdout, so the average unknown probability is anchored
+        at the Good-Turing estimate exactly as before.
     """
 
-    def __init__(self, base, recal_frac=0.2, cap=0.9, random_state=None):
+    def __init__(self, base, recal_frac=0.2, cap=0.9, random_state=None,
+                 mode='scale'):
+        if mode not in ('scale', 'center', 'isotonic'):
+            raise ValueError("mode must be 'scale', 'center' or 'isotonic'")
         self.base = base
         self.recal_frac = recal_frac
         self.cap = cap
         self.random_state = random_state
+        self.mode = mode
 
     def fit(self, X, y):
         y = np.asarray(y)
@@ -1844,7 +1916,21 @@ class GTRecalOpenSet:
 
         scoring_copy = self.base.fit(X[idx1], y[idx1])
         s_holdout = scoring_copy.predict_proba(X[idx2])[:, -1]
-        self.s_bar_ = float(np.mean(s_holdout))
+        # pseudo-novelty labels on the holdout: identity absent from the fit part
+        seen_holdout = np.isin(y[idx2], np.unique(y[idx1]))
+        self.holdout_novelty_rate_ = float(1.0 - np.mean(seen_holdout))
+        self.s0_ = 0.0
+        self.iso_ = None
+        if self.mode == 'center':
+            ref = s_holdout[seen_holdout] if np.any(seen_holdout) else s_holdout
+            self.s0_ = float(np.median(ref))
+        elif self.mode == 'isotonic':
+            from sklearn.isotonic import IsotonicRegression
+            self.iso_ = IsotonicRegression(y_min=0.0, y_max=1.0,
+                                           out_of_bounds='clip')
+            self.iso_.fit(s_holdout, (~seen_holdout).astype(float))
+        t_holdout = self._transform(s_holdout)
+        self.s_bar_ = float(np.mean(t_holdout))
 
         if self.s_bar_ > 1e-12 and self.p_gt_ > 0:
             self.scale_ = self.p_gt_ / self.s_bar_
@@ -1856,6 +1942,15 @@ class GTRecalOpenSet:
         self.num_classes = self.model_fit.num_classes
 
         return copy.deepcopy(self)
+
+    def _transform(self, s):
+        """Mode-specific transformation of the raw unknown score."""
+        s = np.asarray(s, dtype=float)
+        if self.mode == 'center':
+            return np.maximum(s - self.s0_, 0.0)
+        if self.mode == 'isotonic':
+            return self.iso_.predict(s)
+        return s
 
     def predict(self, X):
         return self.model_fit.predict(X)
@@ -1869,7 +1964,7 @@ class GTRecalOpenSet:
         if self.scale_ is None:
             p_unk = np.full(len(s), self.p_gt_)
         else:
-            p_unk = np.minimum(self.scale_ * s, self.cap)
+            p_unk = np.minimum(self.scale_ * self._transform(s), self.cap)
 
         seen_mass = np.clip(p_seen.sum(axis=1), 1e-12, None)
         p_seen_scaled = p_seen * ((1.0 - p_unk) / seen_mass)[:, None]
