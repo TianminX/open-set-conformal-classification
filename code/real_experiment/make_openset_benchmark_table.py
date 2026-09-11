@@ -75,17 +75,16 @@ rows = [("CGTC+", agg(mm, "Coverage (?)", "Size", "Prop ?",
 
 # ---- benchmarks (training-level scoring, decoded size) ---------------------
 # Each row lists candidate (results folder, CSV method row) pairs; the first
-# candidate whose folder holds every n_ref is used. The candidates put the
-# unified-runner folders (real_experiment_celeb_openset_bench.py, uniform
-# recalibration RECAL_MODE) before the legacy per-family folders, so the table
-# switches to the uniform recalibration automatically once those results
-# land; until then it reproduces the legacy rows. Rows whose folders are all
-# absent are skipped with a warning.
-RECAL_MODE = os.environ.get("OPENSET_RECAL_MODE", "center")
-
-
-def bench(family):
-    return f"celeb_bench_{family}_{RECAL_MODE}"
+# candidate whose folder holds every n_ref is used, and rows whose folders are
+# all absent are skipped with a warning. Groups: "direct" = raw and
+# off-the-shelf scores; "recal" = the original multiplicative Good-Turing
+# recalibration (legacy per-family folders; not run for the two scores added
+# by the unified runner); "iso" = the isotonic (conditional) recalibration
+# produced by real_experiment_celeb_openset_bench.py in mode isotonic. The
+# isolation-forest and default-bandwidth OCSVM variants of the unified runner
+# carry no usable novelty signal on these embeddings and are not tabulated.
+def ISO(family):
+    return f"celeb_bench_{family}_isotonic"
 
 
 def available(folder, method):
@@ -106,60 +105,44 @@ def first_available(cands):
     return None, None
 
 
-# (label, candidates, group): group "direct" = raw and off-the-shelf scores,
-# "recal" = Good-Turing recalibrated variants.
 BENCH = [
-    ("OpenMax (simplified)", [("celeb_openmax", "Method (OpenMax-MLP)")], "direct"),
-    ("OpenMax (faithful)",   [("celeb_openmax_osdn", "Method (OpenMax-MLP)")], "direct"),
-    ("OpenMax-KNN",          [("celeb_openmax", "Method (OpenMax-KNN)")], "direct"),
-    ("KNN-dist (raw)",       [("celeb_knn_scores_raw", "Method (KNN-dist)")], "direct"),
-    ("KNN-dist (k=1, raw)",  [(bench("knn1"), "Method (KNN-dist k=1)")], "direct"),
-    ("KNN-MSP (raw)",        [("celeb_knn_scores_raw", "Method (KNN-MSP)")], "direct"),
-    ("PROSER (raw)",         [("celeb_proser", "Method (PROSER)")], "direct"),
-    ("OCC (raw)",            [(bench("occ"), "Method (OCC lof)"), ("celeb_occ", "Method (OCC)")], "direct"),
-    ("OCC (IF, raw)",        [(bench("occ"), "Method (OCC iforest)")], "direct"),
-    ("OCC (OCSVM, raw)",     [(bench("occ"), "Method (OCC ocsvm)")], "direct"),
-    ("OCC (OCSVM $\\gamma{=}20$, raw)", [(bench("occ"), "Method (OCC ocsvm20)")], "direct"),
-    ("Naive (GT constant)",  [("celeb_gt_knn", "Method (GT-KNN)")], "direct"),
-    ("Recal-KNN-dist",       [(bench("knn"), "Method (Recal KNN-dist k=10)"), ("celeb_knn_scores", "Method (Recal KNN-dist)")], "recal"),
-    ("Recal-KNN-dist (k=1)", [(bench("knn1"), "Method (Recal KNN-dist k=1)")], "recal"),
-    ("Recal-KNN-MSP",        [(bench("knn"), "Method (Recal KNN-MSP)"), ("celeb_knn_scores", "Method (Recal KNN-MSP)")], "recal"),
-    ("Recal-PROSER",         [(bench("proser"), "Method (Recal PROSER)"), ("celeb_proser_recal", "Method (Recal PROSER)")], "recal"),
-    ("Recal-OCC",            [(bench("occ"), "Method (Recal OCC lof)"), ("celeb_occ", "Method (Recal OCC)")], "recal"),
-    ("Recal-OCC (IF)",       [(bench("occ"), "Method (Recal OCC iforest)")], "recal"),
-    ("Recal-OCC (OCSVM)",    [(bench("occ"), "Method (Recal OCC ocsvm)")], "recal"),
-    ("Recal-OCC (OCSVM $\\gamma{=}20$)", [(bench("occ"), "Method (Recal OCC ocsvm20)")], "recal"),
-    ("Recal-OpenMax",        [(bench("openmax"), "Method (Recal OpenMax-MLP)"), ("celeb_openmax_recal", "Method (Recal OpenMax-MLP)")], "recal"),
-    ("Recal-OpenMax-KNN",    [(bench("openmax"), "Method (Recal OpenMax-KNN)"), ("celeb_openmax_recal", "Method (Recal OpenMax-KNN)")], "recal"),
+    ("OpenMax (simplified)",          [("celeb_openmax", "Method (OpenMax-MLP)")], "direct"),
+    ("OpenMax (faithful)",            [("celeb_openmax_osdn", "Method (OpenMax-MLP)")], "direct"),
+    ("OpenMax-KNN",                   [("celeb_openmax", "Method (OpenMax-KNN)")], "direct"),
+    ("KNN-dist ($k{=}10$, raw)",      [("celeb_knn_scores_raw", "Method (KNN-dist)")], "direct"),
+    ("KNN-dist ($k{=}1$, raw)",       [(ISO("knn1"), "Method (KNN-dist k=1)"), ("celeb_bench_knn1_center", "Method (KNN-dist k=1)")], "direct"),
+    ("KNN-MSP (raw)",                 [("celeb_knn_scores_raw", "Method (KNN-MSP)")], "direct"),
+    ("PROSER (raw)",                  [("celeb_proser", "Method (PROSER)")], "direct"),
+    ("OCC (LOF, raw)",                [("celeb_occ", "Method (OCC)"), (ISO("occ"), "Method (OCC lof)")], "direct"),
+    ("OCC (OCSVM $\\gamma{=}20$, raw)", [(ISO("occ"), "Method (OCC ocsvm20)"), ("celeb_bench_occ_center", "Method (OCC ocsvm20)")], "direct"),
+    ("Naive (GT constant)",           [("celeb_gt_knn", "Method (GT-KNN)")], "direct"),
+    ("Recal-KNN-dist ($k{=}10$)",     [("celeb_knn_scores", "Method (Recal KNN-dist)")], "recal"),
+    ("Recal-KNN-MSP",                 [("celeb_knn_scores", "Method (Recal KNN-MSP)")], "recal"),
+    ("Recal-PROSER",                  [("celeb_proser_recal", "Method (Recal PROSER)")], "recal"),
+    ("Recal-OCC (LOF)",               [("celeb_occ", "Method (Recal OCC)")], "recal"),
+    ("Recal-OpenMax",                 [("celeb_openmax_recal", "Method (Recal OpenMax-MLP)")], "recal"),
+    ("Recal-OpenMax-KNN",             [("celeb_openmax_recal", "Method (Recal OpenMax-KNN)")], "recal"),
+    ("Iso-KNN-dist ($k{=}10$)",       [(ISO("knn"), "Method (Recal KNN-dist k=10)")], "iso"),
+    ("Iso-KNN-dist ($k{=}1$)",        [(ISO("knn1"), "Method (Recal KNN-dist k=1)")], "iso"),
+    ("Iso-KNN-MSP",                   [(ISO("knn"), "Method (Recal KNN-MSP)")], "iso"),
+    ("Iso-PROSER",                    [(ISO("proser"), "Method (Recal PROSER)")], "iso"),
+    ("Iso-OCC (LOF)",                 [(ISO("occ"), "Method (Recal OCC lof)")], "iso"),
+    ("Iso-OCC (OCSVM $\\gamma{=}20$)", [(ISO("occ"), "Method (Recal OCC ocsvm20)")], "iso"),
+    ("Iso-OpenMax",                   [(ISO("openmax"), "Method (Recal OpenMax-MLP)")], "iso"),
+    ("Iso-OpenMax-KNN",               [(ISO("openmax"), "Method (Recal OpenMax-KNN)")], "iso"),
 ]
 included = []
-used_folders = {}
 for name, cands, group in BENCH:
     df, folder = first_available(cands)
     if df is None:
         print(f"skipping {name}: no complete results in {[c[0] for c in cands]}")
         continue
-    used_folders[name] = folder
     included.append((name, group))
     rows.append((name, agg(df, "Coverage (joker_train)", "Size (joker_adj)",
                            "Prop ?", "Unseen Coverage (joker_train)")))
-
-# Once the k=1 and the extra one-class rows exist, disambiguate the legacy labels.
-def relabel(rows, included, old, new):
-    rows[:] = [(new if n == old else n, a) for n, a in rows]
-    included[:] = [(new if n == old else n, g) for n, g in included]
-
-names = [n for n, _ in included]
-if "KNN-dist (k=1, raw)" in names:
-    relabel(rows, included, "KNN-dist (raw)", "KNN-dist (k=10, raw)")
-    relabel(rows, included, "Recal-KNN-dist", "Recal-KNN-dist (k=10)")
-if any(n.startswith("OCC (IF") or n.startswith("OCC (OCSVM") for n in names):
-    relabel(rows, included, "OCC (raw)", "OCC (LOF, raw)")
-    relabel(rows, included, "Recal-OCC", "Recal-OCC (LOF)")
-n_uniform = sum(1 for n, f in used_folders.items() if f.startswith("celeb_bench_"))
-recal_note = (f" The Recal rows use the uniform \\emph{{{RECAL_MODE}}} recalibration of Appendix~\\ref{{app:benchmark-methods}}."
-              if n_uniform > 0 else "")
-print(f"rows from unified-runner folders: {n_uniform} / {len(used_folders)}")
+recal_note = (" The prefix Recal marks the multiplicative Good--Turing recalibration and "
+              "the prefix Iso the isotonic recalibration of Appendix~\\ref{app:benchmark-methods}; "
+              "the suffix (raw) marks a score used directly as an unknown probability.")
 
 # ---- true novelty rates ----------------------------------------------------
 om = load("celeb_openmax", "Method (OpenMax-MLP)")
@@ -198,14 +181,15 @@ def cells(a):
 
 GROUPS = [["CGTC+"],
           [n for n, g in included if g == "direct"],
-          [n for n, g in included if g == "recal"]]
+          [n for n, g in included if g == "recal"],
+          [n for n, g in included if g == "iso"]]
 by_name = dict(rows)
 
 caption = (
     "Full benchmark summary on CelebA ($\\alpha = 0.2$, $2{,}000$ sampled "
     "identities, averages over independent batches) at the smallest and "
     "largest reference sample sizes; the figures show the full "
-    "$n_{\\mathrm{ref}}$ grid for a readable subset of these methods. "
+    "$n_{\\mathrm{ref}}$ grid for a readable subset of these methods. " + recal_note +
     "\\emph{Cov.}: marginal coverage of each method's own guaranteed notion, "
     "the reference-level target for CGTC+ and the weaker training-level "
     "event~\\eqref{eq:training-level-coverage} for all benchmarks. "

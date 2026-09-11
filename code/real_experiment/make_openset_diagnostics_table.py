@@ -48,11 +48,8 @@ def load(folder, method):
               & (df["method"] == method)]
 
 
-RECAL_MODE = os.environ.get("OPENSET_RECAL_MODE", "center")
-
-
-def bench(family):
-    return f"celeb_bench_{family}_{RECAL_MODE}"
+def ISO(family):
+    return f"celeb_bench_{family}_isotonic"
 
 
 def available(folder, method):
@@ -66,20 +63,19 @@ def available(folder, method):
 
 
 # (label, candidates [(folder, method), ...]); the first complete candidate is
-# used, unified-runner folders first (see make_openset_benchmark_table.py).
+# used. Raw scores only: the multiplicative recalibration shares AUC and ratio
+# with its raw score, the isotonic one shares the AUC up to ties.
 ROWS = [
-    ("OpenMax (simplified)", [("celeb_openmax",        "Method (OpenMax-MLP)")]),
-    ("OpenMax (faithful)",   [("celeb_openmax_osdn",   "Method (OpenMax-MLP)")]),
-    ("OpenMax-KNN",          [("celeb_openmax",        "Method (OpenMax-KNN)")]),
-    ("KNN-dist",             [("celeb_knn_scores_raw", "Method (KNN-dist)")]),
-    ("KNN-dist (k=1)",       [(bench("knn1"),          "Method (KNN-dist k=1)")]),
-    ("KNN-MSP",              [("celeb_knn_scores_raw", "Method (KNN-MSP)")]),
-    ("PROSER",               [("celeb_proser",         "Method (PROSER)")]),
-    ("OCC (centered LOF)",   [(bench("occ"), "Method (OCC lof)"), ("celeb_occ", "Method (OCC)")]),
-    ("OCC (IF)",             [(bench("occ"), "Method (OCC iforest)")]),
-    ("OCC (OCSVM)",          [(bench("occ"), "Method (OCC ocsvm)")]),
-    ("OCC (OCSVM, $\\gamma{=}20$)", [(bench("occ"), "Method (OCC ocsvm20)")]),
-    ("Naive (GT constant)",  [("celeb_gt_knn",         "Method (GT-KNN)")]),
+    ("OpenMax (simplified)",     [("celeb_openmax",        "Method (OpenMax-MLP)")]),
+    ("OpenMax (faithful)",       [("celeb_openmax_osdn",   "Method (OpenMax-MLP)")]),
+    ("OpenMax-KNN",              [("celeb_openmax",        "Method (OpenMax-KNN)")]),
+    ("KNN-dist ($k{=}10$)",      [("celeb_knn_scores_raw", "Method (KNN-dist)")]),
+    ("KNN-dist ($k{=}1$)",       [(ISO("knn1"),            "Method (KNN-dist k=1)"), ("celeb_bench_knn1_center", "Method (KNN-dist k=1)")]),
+    ("KNN-MSP",                  [("celeb_knn_scores_raw", "Method (KNN-MSP)")]),
+    ("PROSER",                   [("celeb_proser",         "Method (PROSER)")]),
+    ("OCC (LOF, centered)",      [("celeb_occ", "Method (OCC)"), (ISO("occ"), "Method (OCC lof)")]),
+    ("OCC (OCSVM $\\gamma{=}20$)", [(ISO("occ"), "Method (OCC ocsvm20)"), ("celeb_bench_occ_center", "Method (OCC ocsvm20)")]),
+    ("Naive (GT constant)",      [("celeb_gt_knn",         "Method (GT-KNN)")]),
 ]
 resolved = []
 for name, cands in ROWS:
@@ -90,9 +86,6 @@ for name, cands in ROWS:
             break
     else:
         print(f"skipping {name}: no complete results in {[c[0] for c in cands]}")
-names = [n for n, _ in resolved]
-if "KNN-dist (k=1)" in names:
-    resolved = [("KNN-dist (k=10)" if n == "KNN-dist" else n, d) for n, d in resolved]
 
 cells = []
 ses_auc, ses_p = [], []
@@ -128,7 +121,7 @@ lines.append(
     r"\caption{Diagnostics of the raw unknown-class probabilities on CelebA ($\alpha = 0.2$, $2{,}000$ sampled identities, averages over the same batches as Table~\ref{tab:app-openset-benchmarks}) at the smallest and largest reference sample sizes. "
     r"\emph{AUC}: area under the ROC curve of the unknown probability as a detector of novelty at the training level, that is, for separating test points whose identity is absent from the training split from those whose identity is present. "
     r"\emph{$\bar{p}_{\mathrm{unk}}$}: average unknown probability over test points whose identity is present in the training split. "
-    r"\emph{Ratio}: average unknown probability over test points whose identity is absent from the entire reference sample, divided by the previous column; a multiplicative recalibration preserves this ratio up to the effect of the cap, so each recalibrated variant shares the AUC and the ratio of its raw score. "
+    r"\emph{Ratio}: average unknown probability over test points whose identity is absent from the entire reference sample, divided by the previous column; the multiplicative recalibration (Recal) preserves this ratio up to the effect of the cap and therefore shares the AUC and the ratio of its raw score, whereas the isotonic recalibration (Iso) shares only the AUC, up to ties. "
     r"\emph{$p_{\mathrm{unk}} > p_{Y}$}: fraction of test points whose identity is present in the training split for which the unknown probability exceeds the probability of the true identity. "
     r"\emph{Top-1}: accuracy of the seen-class component on test points whose identity is present in the training split. "
     f"Monte Carlo standard errors are at most ${max_se_auc:.2f}$ for the AUC and at most ${max_se_p:.2f}$ for $\\bar{{p}}_{{\\mathrm{{unk}}}}$.}}"

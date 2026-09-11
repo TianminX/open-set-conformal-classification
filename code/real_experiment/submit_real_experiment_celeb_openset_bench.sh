@@ -29,8 +29,10 @@ else
   FAMILY_LIST=(knn knn1 proser openmax occ)
 fi
 
-# Recalibration modes to run
-MODE_LIST=(center isotonic)
+# Recalibration modes to run (override with MODES="scale" etc.; e.g.
+# MODES=scale bash submit_real_experiment_celeb_openset_bench.sh knn1 occ
+# adds the original multiplicative recalibration for the new scores)
+read -r -a MODE_LIST <<< "${MODES:-center isotonic}"
 
 # List of different n_ref values
 N_REF_LIST=(2000 3000 4000 5000 6000)
