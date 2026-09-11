@@ -120,7 +120,9 @@ BENCH = [
     ("Recal-KNN-MSP",                 [("celeb_knn_scores", "Method (Recal KNN-MSP)")], "recal"),
     ("Recal-PROSER",                  [("celeb_proser_recal", "Method (Recal PROSER)")], "recal"),
     ("Recal-OCC (LOF)",               [("celeb_occ", "Method (Recal OCC)")], "recal"),
-    ("Recal-OpenMax",                 [("celeb_openmax_recal", "Method (Recal OpenMax-MLP)")], "recal"),
+    # Recal-OpenMax / Iso-OpenMax (the recalibrated simplified OpenMax) are
+    # omitted from the table: their sets degenerate (decoded size above 50
+    # labels at every n_ref) and the raw configuration already shows why.
     ("Recal-OpenMax-KNN",             [("celeb_openmax_recal", "Method (Recal OpenMax-KNN)")], "recal"),
     ("Iso-KNN-dist ($k{=}10$)",       [(ISO("knn"), "Method (Recal KNN-dist k=10)")], "iso"),
     ("Iso-KNN-dist ($k{=}1$)",        [(ISO("knn1"), "Method (Recal KNN-dist k=1)")], "iso"),
@@ -128,7 +130,6 @@ BENCH = [
     ("Iso-PROSER",                    [(ISO("proser"), "Method (Recal PROSER)")], "iso"),
     ("Iso-OCC (LOF)",                 [(ISO("occ"), "Method (Recal OCC lof)")], "iso"),
     ("Iso-OCC (OCSVM $\\gamma{=}20$)", [(ISO("occ"), "Method (Recal OCC ocsvm20)")], "iso"),
-    ("Iso-OpenMax",                   [(ISO("openmax"), "Method (Recal OpenMax-MLP)")], "iso"),
     ("Iso-OpenMax-KNN",               [(ISO("openmax"), "Method (Recal OpenMax-KNN)")], "iso"),
 ]
 included = []

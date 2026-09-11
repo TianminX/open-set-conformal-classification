@@ -91,10 +91,12 @@ ISO_DIR     <- function(family) sprintf("results_hpc/celeb_bench_%s_isotonic/", 
 # "Iso-" the isotonic (conditional) one; both come through BENCH_SOURCES.
 #   "main"     : Naive + Recal-OCC (LOF) + Iso-KNN-dist (k=1) + CGTC+.
 #   "raw"      : OpenMax (simplified) + raw KNN-dist (k=10, k=1), KNN-MSP, PROSER.
-#   "recal"    : Recal-OpenMax, Recal-KNN-dist (k=10), Recal-KNN-MSP, Recal-PROSER
-#                (the multiplicative recalibration was not run for the k=1 and
-#                OCSVM scores).
-#   "iso"      : the same scores under the isotonic recalibration.
+#   "recal"    : Recal-KNN-dist (k=10), Recal-KNN-MSP, Recal-PROSER (the
+#                multiplicative recalibration was not run for the k=1 and
+#                OCSVM scores; the recalibrated OpenMax variants are omitted
+#                from the figures because they degenerate).
+#   "iso"      : the same scores plus Iso-KNN-dist (k=1) under the isotonic
+#                recalibration.
 #   "occ"      : Recal-OCC (LOF), Iso-OCC (LOF), Iso-OCC (OCSVM g=20).
 # Isolation forest and default-bandwidth OCSVM results are not plotted.
 # "random" keeps every family for diagnostics.
@@ -107,8 +109,8 @@ SPLIT_SETTINGS <- tribble(
   "mm_vs_recal",   "Method (Bernoulli)",     0, FALSE,              list(character(0)),    FALSE, FALSE,          FALSE,           list("dist"),           TRUE,    FALSE,   TRUE,          TRUE, TRUE, list(character(0)),
   "main",          "Method (Bernoulli)",     0, FALSE,              list(character(0)),    FALSE, FALSE,          FALSE,           list(character(0)),     TRUE,    FALSE,   FALSE,         FALSE,      FALSE,        list(c("Recal-OCC (LOF)", "Iso-KNN-dist (k=1)")),
   "raw",           "Method (Bernoulli)",     0, FALSE,              list("MLP"),           FALSE, FALSE,          TRUE,            list(character(0)),     TRUE,    TRUE,    FALSE,         FALSE,      TRUE,         list("KNN-dist (k=1)"),
-  "recal",         "Method (Bernoulli)",     0, FALSE,              list(character(0)),    FALSE, FALSE,          FALSE,           list(character(0)),     TRUE,    FALSE,   FALSE,         FALSE,      FALSE,        list(c("Recal-OpenMax", "Recal-KNN-dist (k=10)", "Recal-KNN-MSP", "Recal-PROSER")),
-  "iso",           "Method (Bernoulli)",     0, FALSE,              list(character(0)),    FALSE, FALSE,          FALSE,           list(character(0)),     TRUE,    FALSE,   FALSE,         FALSE,      FALSE,        list(c("Iso-OpenMax", "Iso-KNN-dist (k=10)", "Iso-KNN-dist (k=1)", "Iso-KNN-MSP", "Iso-PROSER")),
+  "recal",         "Method (Bernoulli)",     0, FALSE,              list(character(0)),    FALSE, FALSE,          FALSE,           list(character(0)),     TRUE,    FALSE,   FALSE,         FALSE,      FALSE,        list(c("Recal-KNN-dist (k=10)", "Recal-KNN-MSP", "Recal-PROSER")),
+  "iso",           "Method (Bernoulli)",     0, FALSE,              list(character(0)),    FALSE, FALSE,          FALSE,           list(character(0)),     TRUE,    FALSE,   FALSE,         FALSE,      FALSE,        list(c("Iso-KNN-dist (k=10)", "Iso-KNN-dist (k=1)", "Iso-KNN-MSP", "Iso-PROSER")),
   "occ",           "Method (Bernoulli)",     0, FALSE,              list(character(0)),    FALSE, FALSE,          FALSE,           list(character(0)),     TRUE,    FALSE,   FALSE,         FALSE,      FALSE,        list(c("Recal-OCC (LOF)", "Iso-OCC (LOF)", "Iso-OCC (OCSVM g=20)"))
 )
 
