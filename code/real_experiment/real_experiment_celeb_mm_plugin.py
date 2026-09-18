@@ -116,8 +116,13 @@ print(f"subsampling_scheme: {subsampling_scheme}")
 #####################
 
 beta_label = "betacv" if beta_cv else f"beta{default_beta}"
+# Optional results-folder suffix (CELEB_RESULTS_SUFFIX, e.g. "_large" as set
+# by submit_real_experiment_celeb_large_nref.sh) so that runs outside the
+# paper's n_ref grid stay out of the folders the figure scripts read; the
+# file names inside the folder are unchanged.
+results_suffix = os.environ.get("CELEB_RESULTS_SUFFIX", "")
 output_file = (
-    f"results/celeb_mm_plugin/"
+    f"results/celeb_mm_plugin{results_suffix}/"
     f"celeb_"
     f"{beta_label}_"
     f"nref{n_ref}_"

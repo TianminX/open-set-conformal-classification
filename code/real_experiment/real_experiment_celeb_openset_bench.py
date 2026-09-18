@@ -131,8 +131,13 @@ print(f"subsampling_scheme: {subsampling_scheme}")
 #####################
 
 tag = f"celeb_bench_{family}_{recal_mode}"
+# Optional results-folder suffix (CELEB_RESULTS_SUFFIX, e.g. "_large" as set
+# by submit_real_experiment_celeb_large_nref.sh) so that runs outside the
+# paper's n_ref grid stay out of the folders the figure scripts read; the
+# file names inside the folder are unchanged.
+results_suffix = os.environ.get("CELEB_RESULTS_SUFFIX", "")
 output_file = (
-    f"results/{tag}/"
+    f"results/{tag}{results_suffix}/"
     f"{tag}_"
     f"nref{n_ref}_"
     f"ntest{n_test}_"
