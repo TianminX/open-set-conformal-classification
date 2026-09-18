@@ -33,7 +33,9 @@ ALPHA_TOT   <- 0.10
 LAMBDA      <- 0.50
 NREF        <- 2000
 THETA_MIN   <- 0
-THETA_MAX   <- Inf
+THETA_MAX   <- 100      # closed-set end only (Inf for the full sweep)
+X_BREAKS    <- c(12, 25, 50, 100)   # c(12, 50, 200, 500, 1500) for the full sweep
+LOG_SIZE_Y  <- FALSE    # TRUE for the full sweep (Recal-OCC (LOF) spans the dictionary)
 BENCH_SOURCES <- list(
   "Naive"              = c("results_hpc/dp_bench_naive/",         "Method (GT-KNN)"),
   "Recal-OCC (LOF)"    = c("results_hpc/dp_bench_occ_scale/",     "Method (Recal OCC lof)"),
@@ -171,8 +173,9 @@ p <- ggplot(long, aes(theta, m, color = source, fill = source, shape = source)) 
   facet_wrap(~ metric, scales = "free_y", nrow = 1) +
   facetted_pos_scales(y = list(
     metric == "Coverage" ~ scale_y_continuous(limits = c(0, 1)),
-    metric %in% c("Nominal Set Size", "Decoded Set Size") ~ scale_y_log10())) +
-  scale_x_log10(breaks = c(12, 50, 200, 500, 1500),
+    metric %in% c("Nominal Set Size", "Decoded Set Size") ~
+      (if (LOG_SIZE_Y) scale_y_log10() else scale_y_continuous()))) +
+  scale_x_log10(breaks = X_BREAKS,
                 labels = function(x) format(x, scientific = FALSE, trim = TRUE)) +
   scale_shape_manual(values = source_shapes) +
   scale_color_manual(values = source_colors) +
