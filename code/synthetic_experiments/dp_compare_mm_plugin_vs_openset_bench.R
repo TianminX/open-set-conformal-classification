@@ -170,7 +170,8 @@ p <- ggplot(long, aes(theta, m, color = source, fill = source, shape = source)) 
             linetype = "dashed", color = "grey40") +
   facet_wrap(~ metric, scales = "free_y", nrow = 1) +
   facetted_pos_scales(y = list(
-    metric == "Coverage" ~ scale_y_continuous(limits = c(0, 1)))) +
+    metric == "Coverage" ~ scale_y_continuous(limits = c(0, 1)),
+    metric %in% c("Nominal Set Size", "Decoded Set Size") ~ scale_y_log10())) +
   scale_x_log10(breaks = c(12, 50, 200, 500, 1500),
                 labels = function(x) format(x, scientific = FALSE, trim = TRUE)) +
   scale_shape_manual(values = source_shapes) +
