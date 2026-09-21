@@ -103,8 +103,12 @@ print(f"batch_num: {batch_num}")
 #####################
 
 beta_label = "betacv" if beta_cv else f"beta{default_beta}"
+# Optional results-folder suffix (DP_MM_RESULTS_SUFFIX, e.g. "_vary_calprop" as
+# set by submit_synthetic_experiment_dp_mm_plugin_vary_calprop.sh), so that
+# side experiments do not land in the main theta-sweep folder.
+results_suffix = os.environ.get("DP_MM_RESULTS_SUFFIX", "")
 output_file = (
-    f"results/dp_tuned_mixed_labels_mm_plugin/"
+    f"results/dp_tuned_mixed_labels_mm_plugin{results_suffix}/"
     f"dp_"
     f"occ{occ_name}_"
     f"{beta_label}_"
@@ -279,6 +283,11 @@ def analyze_data(X_ref, Y_ref, X_test, Y_test, methods_list,
     for method_name, method_function in methods_list.items():
         tqdm.write(f"Begin running {method_name}")
 
+        # Realized calibration set size of the underlying splitter (filled in
+        # by the get_preliminary_sets_* functions), recorded as
+        # n_calib_realized as in synthetic_experiment_dp.py.
+        splitter_info = {}
+
         if method_name == 'Method (benchmark)' or method_name == 'Method (benchmark full)':
             # Benchmark uses full alpha_total budget
             decoded_prelim_sets = method_function(
@@ -286,7 +295,8 @@ def analyze_data(X_ref, Y_ref, X_test, Y_test, methods_list,
                 alpha=alpha_unseen + alpha_seen + alpha_class,
                 black_box=classifier,
                 calib_size=calib_size,
-                random_state=random_state
+                random_state=random_state,
+                info=splitter_info
             )
         elif method_name == 'Method (Bernoulli benchmark)' or method_name == 'Method (Bernoulli benchmark full)':
             # Benchmark uses full alpha_total budget
@@ -295,7 +305,8 @@ def analyze_data(X_ref, Y_ref, X_test, Y_test, methods_list,
                 alpha_prime=alpha_unseen + alpha_seen + alpha_class,
                 black_box=classifier,
                 calibration_probability=calib_prob_adjusted,
-                random_state=random_state
+                random_state=random_state,
+                info=splitter_info
             )
         elif method_name == 'Method (Bernoulli)' or method_name == 'Method (Bernoulli full)' or method_name == 'Method (Bernoulli uniform)':
             # Use the deployed (already-inflated) alpha_class
@@ -304,7 +315,8 @@ def analyze_data(X_ref, Y_ref, X_test, Y_test, methods_list,
                 alpha_prime=alpha_class,
                 black_box=classifier,
                 calibration_probability=calib_prob_adjusted,
-                random_state=random_state
+                random_state=random_state,
+                info=splitter_info
             )
         else:
             # Use the deployed (already-inflated) alpha_class
@@ -313,8 +325,11 @@ def analyze_data(X_ref, Y_ref, X_test, Y_test, methods_list,
                 alpha_prime=alpha_class,
                 black_box=classifier,
                 calib_size=calib_size,
-                random_state=random_state
+                random_state=random_state,
+                info=splitter_info
             )
+
+        n_calib_realized = splitter_info.get('n_calib', np.nan)
 
         # For each p-value approach
         for pvalue_method in ['GT', 'XGT', 'RGT']:
@@ -342,6 +357,7 @@ def analyze_data(X_ref, Y_ref, X_test, Y_test, methods_list,
             new_results['num_unique_labels'] = num_unique_labels
             new_results['prop_unseen_test'] = prop_unseen
             new_results['num_unseen_test'] = num_unseen
+            new_results['n_calib_realized'] = n_calib_realized
 
             # Plug-in allocation values
             new_results['alpha_class'] = alpha_class

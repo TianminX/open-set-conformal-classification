@@ -24,7 +24,27 @@ library(ggh4x)
 # machinery as dp_vary_occ_plots.R.
 # ============================================================
 
-idir <- "results_hpc/dp_tuned_mixed_labels/vary_calprop"
+# Variant switch (environment variable VARY_CALPROP_VARIANT):
+#   cgtc (default): original-CGTC sweep from synthetic_experiment_dp.py,
+#                   results_hpc/dp_tuned_mixed_labels/vary_calprop, outputs as above.
+#   mm:             CGTC+ sweep from synthetic_experiment_dp_mm_plugin.py via
+#                   submit_synthetic_experiment_dp_mm_plugin_vary_calprop.sh,
+#                   results_hpc/dp_tuned_mixed_labels_mm_plugin_vary_calprop,
+#                   outputs with the suffix "_mm" before ".pdf".
+variant <- Sys.getenv("VARY_CALPROP_VARIANT", "cgtc")
+if (variant == "mm") {
+  idir <- "results_hpc/dp_tuned_mixed_labels_mm_plugin_vary_calprop"
+  method_prefix <- "CGTC+"
+  flag_col <- "splitting_method_flag"
+  out_suffix <- "_mm"
+} else {
+  idir <- "results_hpc/dp_tuned_mixed_labels/vary_calprop"
+  method_prefix <- "CGTC"
+  flag_col <- "tuning_method_flag"
+  out_suffix <- ""
+}
+m_random <- paste0(method_prefix, " (random)")
+m_selective <- paste0(method_prefix, " (selective)")
 fig.dir <- "figures"
 dir.create(fig.dir, showWarnings = FALSE)
 
@@ -36,28 +56,21 @@ df_all <- list.files(idir, pattern = "\\.csv$", full.names = TRUE) %>%
   })
 
 # 2. Recode method names
-df_all <- df_all %>%
-  mutate(method = recode(method,
-                         "Method (random splitting)" = "CGTC (random)",
-                         "Method (benchmark)" = "standard (random)",
-                         "Method (Bernoulli)" = "CGTC (selective)",
-                         "Method (Bernoulli benchmark)" = "standard (selective)"))
+recode_map <- c("Method (random splitting)" = m_random,
+                "Method (benchmark)" = "standard (random)",
+                "Method (Bernoulli)" = m_selective,
+                "Method (Bernoulli benchmark)" = "standard (selective)")
+df_all <- df_all %>% mutate(method = recode(method, !!!recode_map))
 
-methods_to_keep <- c("CGTC (random)",
-                     "CGTC (selective)",
+methods_to_keep <- c(m_random,
+                     m_selective,
                      "standard (random)",
                      "standard (selective)")
 
 # Styling shared with the manuscript appendix figures
-custom_shapes <- c("CGTC (random)" = 16,
-                   "standard (random)" = 15,
-                   "CGTC (selective)" = 18,
-                   "standard (selective)" = 8)
+custom_shapes <- setNames(c(16, 18, 15, 8), methods_to_keep)
 
-custom_colors <- c("CGTC (random)" = "#E41A1C",
-                   "standard (random)" = "#4DAF4A",
-                   "CGTC (selective)" = "#377EB8",
-                   "standard (selective)" = "#FF7F00")
+custom_colors <- setNames(c("#E41A1C", "#377EB8", "#4DAF4A", "#FF7F00"), methods_to_keep)
 
 theme_main <- theme_bw() +
   theme(
@@ -78,7 +91,7 @@ cond_method <- "fixed"
 # 3. Summarize across batches (theta and n_ref fixed; x = calib_num)
 df_summary <- df_all %>%
   filter(method %in% methods_to_keep,
-         tuning_method_flag == 0,
+         .data[[flag_col]] == 0,
          abs(alpha_total - 0.1) < 1e-10,
          theta == 1000,
          n_ref == 2000) %>%
@@ -122,9 +135,9 @@ df_summary <- df_all %>%
 
 df_xgt <- df_summary %>% filter(pvalue_method == "XGT")
 
-cat("--- batches per calib_num (XGT, CGTC (random)) ---\n")
+cat(sprintf("--- batches per calib_num (XGT, %s) ---\n", m_random))
 df_xgt %>%
-  filter(method == "CGTC (random)") %>%
+  filter(method == m_random) %>%
   select(calib_num, n_batches) %>% as.data.frame() %>% print()
 
 # 4. Three-panel figure builder (Coverage / Seen Labels in Set / Joker Prop)
@@ -180,7 +193,7 @@ make_three_panel <- function(df, x_var, x_lab, errw, annotate_realized = FALSE) 
 # 5. Nominal calibration size on the x-axis
 p_nominal <- make_three_panel(df_xgt, "calib_num", "Calibration sample size", 30)
 print(p_nominal)
-ofile <- "dp_three_panel_s2_lof_varyCalib.pdf"
+ofile <- paste0("dp_three_panel_s2_lof_varyCalib", out_suffix, ".pdf")
 ggsave(file.path(fig.dir, ofile), p_nominal, width = 13.5, height = 3.5, units = "in")
 cat(sprintf(">>> wrote %s\n", file.path(fig.dir, ofile)))
 
@@ -190,7 +203,7 @@ p_realized <- make_three_panel(df_xgt %>% mutate(calib_realized = mean_calib_rea
                                "Realized calibration sample size", 30,
                                annotate_realized = TRUE)
 print(p_realized)
-ofile <- "dp_three_panel_realized_calib.pdf"
+ofile <- paste0("dp_three_panel_realized_calib", out_suffix, ".pdf")
 ggsave(file.path(fig.dir, ofile), p_realized, width = 13.5, height = 3.5, units = "in")
 cat(sprintf(">>> wrote %s\n", file.path(fig.dir, ofile)))
 
@@ -228,7 +241,7 @@ p_cond <- ggplot(df_cond, aes(x = calib_num, y = mean, color = method, shape = m
         legend.direction = "horizontal")
 
 print(p_cond)
-ofile <- "dp_cond_cov_four_levels_s2_lof_varyCalib.pdf"
+ofile <- paste0("dp_cond_cov_four_levels_s2_lof_varyCalib", out_suffix, ".pdf")
 ggsave(file.path(fig.dir, ofile), p_cond, width = 11.5, height = 3.5, units = "in")
 cat(sprintf(">>> wrote %s\n", file.path(fig.dir, ofile)))
 
