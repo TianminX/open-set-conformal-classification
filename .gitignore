@@ -177,9 +177,11 @@ results/
 *.Rproj
 Rplots.pdf
 
-# Aggregated experiment results and generated figures
+# Aggregated experiment results and generated figures and tables
 results_hpc/
 code/**/*.pdf
+code/**/figures/*.csv
+/table_*.tex
 
 # Editors
 .vscode/

@@ -1,10 +1,10 @@
 # Conformal Inference for Open-Set and Imbalanced Classification
 
-This repository contains the reference implementation of Conformal Good–Turing Classification (CGTC), a conformal prediction framework that (1) handles open-set labels via a principled "joker" option for unseen classes and (2) remains efficient under severe class imbalance via selective sample splitting with proper re-weighting.
+This repository contains the reference implementation of Conformal Good–Turing Classification (CGTC) and of its missing-mass-adjusted version (CGTC+), a conformal prediction framework that (1) handles open-set labels via a principled "joker" option for unseen classes and (2) remains efficient under severe class imbalance via selective sample splitting with proper re-weighting.
 
 Accompanying paper: *Conformal Inference for Open-Set and Imbalanced Classification*.
 
-**Abstract.** This paper presents a conformal prediction method for classification in highly imbalanced and open-set settings, where there are many possible classes and not all may be represented in the available data. Existing methods require a finite, known label space and typically involve random sample splitting, which implicitly assumes the availability of a sufficient number of observations from each class. Consequently, they have two limitations: (i) they may become invalid when encountering previously unseen labels at test time, and (ii) they tend to become inefficient under extreme class imbalance. To obtain informative conformal prediction sets with valid coverage in the presence of unseen labels, we compute and integrate into our predictions a new type of conformal p-values inspired by the classical Good-Turing estimator, which can be used to rigorously test whether a new data point belongs to a previously unseen class. To make more efficient use of imbalanced data, we develop a selective sample splitting algorithm that partitions training and calibration data based on label frequency. Despite breaking exchangeability, this approach allows maintaining finite-sample coverage through proper re-weighting. With both simulated and real data, we demonstrate that our method leads to prediction sets with valid coverage even in very challenging open-set scenarios with infinite numbers of possible labels, and produces more informative predictions under extreme class imbalance.
+**Abstract.** This paper studies conformal prediction for highly imbalanced and open-set classification, where the data are exchangeable but there are many possible classes and not all may be observed. We show that existing conformal methods implicitly assume that all labels are observed, so they may undercover when new labels arise at test time; moreover, they make inefficient use of imbalanced data, sometimes producing uninformative prediction sets. To address the first limitation, we introduce conformal p-values for testing whether a test point has a new label, establish their optimality, and connect them to classical work by Good and Turing. Building on these, we develop a conformal prediction method that guarantees marginal coverage under exchangeability alone, together with an asymptotically valid adjustment that reduces conservativeness. To address the second limitation, we propose a selective sample splitting scheme that prioritizes rare labels for training, preserving finite-sample validity through reweighting. Experiments with simulated and real data show that our method performs well even with infinitely many possible labels.
 
 ## Repository layout
 
@@ -37,6 +37,22 @@ See `dependencies.txt` for the exact versions used for the paper.
 
 **Real-data experiment.** Download the CelebA dataset, run the scripts in `real_experiment/data_prep/` to crop faces and compute FaceNet embeddings, then run the `real_experiment_celeb*.py` scripts. The benchmark scripts share the same interface and evaluation as the CGTC pipeline.
 
-**Figures and tables.** The R scripts and `make_openset_benchmark_table.py` aggregate the experiment CSVs (collected under `results_hpc/`) into the figures and tables of the paper.
+**Figures and tables.** The scripts below aggregate the experiment CSVs (collected under `results_hpc/` in each experiment folder) into the figures and tables of the paper. Run each one from its own folder.
+
+| Script | Output |
+| --- | --- |
+| `synthetic_experiments/dp_mm_plugin_paper_plots.R` | CGTC+ on synthetic data: performance, coverage by label frequency, comparison of p-values, allocation of the significance level, reference sample size |
+| `synthetic_experiments/dp_original_appendix_plots.R` | CGTC on synthetic data |
+| `synthetic_experiments/dp_vary_occ_plots.R` | Sensitivity to the one-class classifier |
+| `synthetic_experiments/dp_vary_calprop_plots.R`, `dp_coverage_boxplot_varyCalib.R` | Sensitivity to the calibration sample size (set `VARY_CALPROP_VARIANT=mm` for CGTC+) |
+| `synthetic_experiments/dp_freq0_freq1_plot.R`, `dp_bin_mass_plot.R` | Composition and probability mass of the label-frequency bins |
+| `synthetic_experiments/beta_sensitivity_experiment.py`, `beta_sensitivity_dp_plot.R` | Sensitivity to the exponent of the power-law weights |
+| `synthetic_experiments/ess_selective_splitting.py` | Effective sample size of the selective-splitting weights |
+| `synthetic_experiments/dp_compare_mm_plugin_vs_openset_bench.R` | Comparison with open-set classifiers on synthetic data |
+| `real_experiment/celeb_mm_plugin_paper_plots.R` | CGTC+ on CelebA: performance, coverage by label frequency, comparison of p-values, allocation of the significance level |
+| `real_experiment/celeb_original_appendix_plots.R`, `celeb_nlab_plots.R` | CGTC on CelebA, as a function of the reference sample size and of the number of identities |
+| `real_experiment/real_celeb_compare_mm_plugin_vs_original.R` | Comparison of CGTC+ and CGTC on CelebA |
+| `real_experiment/real_celeb_mm_plugin_lambda_compare.R` | Sensitivity to the preference parameter of the allocation loss |
+| `real_experiment/real_celeb_compare_mm_plugin_vs_openmax.R`, `make_openset_benchmark_table.py`, `make_openset_diagnostics_table.py` | Comparison with open-set classifiers on CelebA (figures and tables) |
 
 The CelebA data and raw experiment outputs are not included in this repository.
