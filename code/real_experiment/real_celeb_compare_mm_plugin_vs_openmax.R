@@ -24,7 +24,7 @@ library(ggh4x)
 #   4) Joker Proportion
 # Paper figure (legacy): panels 1, 3, 4 only, legend on the right.
 # Paper figure (current): all four panels, named Coverage | Nominal Set
-#   Size | Decoded Set Size | Joker Proportion, legend on top; file stem
+#   Size | Decoded Set Size | Joker Proportion, legend on the right; file stem
 #   four_panel_paper. Appendix figures use the settings "main", "raw"
 #   and "recal" below.
 #
@@ -279,7 +279,7 @@ df_occ_all <- tryCatch(read_dir(OCC_DIR), error = function(e) {
 if (!is.null(df_occ_all)) cat("  rows:", nrow(df_occ_all), "\n\n")
 
 # ---- shared plotting bits ---------------------------------------------------
-theme_cmp <- theme_bw() + theme(legend.position = "bottom")
+theme_cmp <- theme_bw() + theme(legend.position = "right", legend.direction = "vertical")
 
 theme_paper <- theme_bw() +
   theme(
@@ -292,7 +292,8 @@ theme_paper <- theme_bw() +
     panel.grid.minor = element_blank(),
     strip.text = element_text(size = 16, face = "plain"),
     strip.background = element_rect(fill = "grey90", color = "black"),
-    legend.position = "top"
+    legend.position = "right",
+    legend.direction = "vertical"
   )
 
 source_levels <- c("CGTC+",
@@ -892,16 +893,18 @@ run_comparison <- function(split_name, mm_method_row, flag, openmax_bernoulli,
     x_scale +
     scale_fill_manual(values = source_colors) +
     (if (overlap_fix)
-       guides(color = guide_legend(nrow = 1), fill = guide_legend(nrow = 1),
-              shape = guide_legend(nrow = 1), linetype = guide_legend(nrow = 1))
-     else guides(color = guide_legend(nrow = 1), fill = guide_legend(nrow = 1),
-                 shape = guide_legend(nrow = 1))) +
+       guides(color = guide_legend(ncol = 1), fill = guide_legend(ncol = 1),
+              shape = guide_legend(ncol = 1), linetype = guide_legend(ncol = 1))
+     else guides(color = guide_legend(ncol = 1), fill = guide_legend(ncol = 1),
+                 shape = guide_legend(ncol = 1))) +
     labs(x = "Number of reference observations", y = NULL,
          color = NULL, fill = NULL, shape = NULL, linetype = NULL) +
     theme_paper +
-    theme(legend.position = "top")
+    theme(legend.position = "right", legend.direction = "vertical")
 
-  ggsave(out_file("four_panel_paper"), p_size_paper4, width = 14, height = 4.2)
+  # Preserve readable five-digit n_ref ticks when the legend is on the right.
+  paper_width <- if (split_name == "main_large") 17 else 14
+  ggsave(out_file("four_panel_paper"), p_size_paper4, width = paper_width, height = 4.2)
   cat(">>> wrote", out_file("four_panel_paper"), "\n")
 
   # ============================================================

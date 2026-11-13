@@ -142,7 +142,8 @@ theme_paper <- theme_bw() +
     panel.grid.minor = element_blank(),
     strip.text = element_text(size = 16, face = "plain"),
     strip.background = element_rect(fill = "grey90", color = "black"),
-    legend.position = "top"
+    legend.position = "right",
+    legend.direction = "vertical"
   )
 
 metric_levels <- c("Coverage", "Nominal Set Size", "Decoded Set Size", "Joker Proportion")
@@ -180,8 +181,8 @@ p <- ggplot(long, aes(theta, m, color = source, fill = source, shape = source)) 
   scale_shape_manual(values = source_shapes) +
   scale_color_manual(values = source_colors) +
   scale_fill_manual(values = source_colors) +
-  guides(color = guide_legend(nrow = 1), fill = guide_legend(nrow = 1),
-         shape = guide_legend(nrow = 1)) +
+  guides(color = guide_legend(ncol = 1), fill = guide_legend(ncol = 1),
+         shape = guide_legend(ncol = 1)) +
   labs(x = "Dirichlet concentration parameter", y = NULL,
        color = NULL, fill = NULL, shape = NULL) +
   theme_paper

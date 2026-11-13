@@ -242,12 +242,13 @@ for (occ_method in c("iforest", "ocsvm")) {
           axis.text = element_text(size = 14),
           legend.text = element_text(size = 14),
           legend.title = element_text(size = 16),
-          legend.position = "top",
-          legend.direction = "horizontal")
+          panel.spacing.x = grid::unit(1.2, "lines"),
+          legend.position = "right",
+          legend.direction = "vertical")
 
   print(p_cond)
   ofile <- sprintf("dp_cond_cov_four_levels_s1_%s.pdf", occ_method)
-  ggsave(file.path(fig.dir, ofile), p_cond, width = 11.5, height = 3.5, units = "in")
+  ggsave(file.path(fig.dir, ofile), p_cond, width = 13.5, height = 3.5, units = "in")
   cat(sprintf(">>> wrote %s\n", file.path(fig.dir, ofile)))
 }
 

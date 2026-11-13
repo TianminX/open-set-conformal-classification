@@ -7,7 +7,10 @@ library(tidyverse)
 # concentration parameter, for the manuscript appendix
 # (dp_freq0_freq1_ratio.pdf).
 # Data: fixed-beta (1.6) theta-sweep runs of synthetic_experiment_dp.py,
-# collected under results_hpc/dp_tuned_mixed_labels/beta1.6/.
+# collected under results_hpc/dp_tuned_mixed_labels/beta1.6/. Only the
+# local-outlier-factor runs are read: the folder also holds the isolation
+# forest and one-class SVM runs, which use the same seeds and hence the same
+# test labels, so pooling them would count every replicate three times.
 # Run from code/synthetic_experiments/; output is written to figures/.
 # ============================================================
 
@@ -16,7 +19,7 @@ fig.dir <- "figures"
 dir.create(fig.dir, showWarnings = FALSE)
 
 # 1. Load data
-ifile.list <- list.files(idir, pattern = "\\.csv$", full.names = TRUE)
+ifile.list <- list.files(idir, pattern = "^dp_occlof_.*\\.csv$", full.names = TRUE)
 df_dp_mixed_labels <- map_dfr(ifile.list, ~ fread(.x))
 
 # 2. Recode method names

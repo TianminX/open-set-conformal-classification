@@ -4,15 +4,20 @@ library(scales)
 library(ggh4x)
 
 # ============================================================
-# Varying-calibration-proportion figures for the manuscript appendix,
-# in the layout of the vary-OCC figures (dp_vary_occ_plots.R):
+# Varying-calibration-proportion figures for the manuscript appendix:
 #   dp_three_panel_s2_lof_varyCalib.pdf     (x = nominal calibration size)
 #   dp_three_panel_realized_calib.pdf       (x = realized calibration size,
 #                                            annotated per method)
 #   dp_cond_cov_four_levels_s2_lof_varyCalib.pdf
 # The central panel of the three-panel figures reports the average
 # number of previously seen labels in the prediction set (the joker
-# symbol is excluded from the count).
+# symbol is excluded from the count; CSV column `Size`), under the panel
+# title "Prediction Set Size" used by the original CGTC figures.
+# (Until 2026-10-21 this file used the column `Seen Size`, the average
+# size among test points with a previously seen label, which is a
+# different quantity; see the note in the summary step.)
+# The x-axis is log10-scaled with labeled ticks at the four calibration
+# sizes 100, 200, 400, 1000, as in the original figures.
 # Data: runs of synthetic_experiment_dp.py with theta = 1000,
 # n_ref = 2000, the LOF one-class classifier, and calibration sizes
 # calib_num in {100, 200, 400, 1000}; the CSVs record the realized
@@ -21,7 +26,12 @@ library(ggh4x)
 # Run from code/synthetic_experiments/; outputs are written to figures/.
 # NOTE: reconstruction. The original plotting script for these figures
 # was not preserved; this file re-derives them from the same summary
-# machinery as dp_vary_occ_plots.R.
+# machinery as dp_vary_occ_plots.R. Since 2026-10-21 both sweeps share
+# one layout (that of the vary-OCC figures: log10 x-axis, dashed grey
+# unseen-label proportion in the joker panel, legend on the right,
+# 13.5 x 3.5 in pages), and the realized-size figure labels every point
+# in every panel with its realized calibration size in the method
+# colour, with leader segments drawn by ggrepel.
 # ============================================================
 
 # Variant switch (environment variable VARY_CALPROP_VARIANT):
@@ -43,6 +53,7 @@ if (variant == "mm") {
   flag_col <- "tuning_method_flag"
   out_suffix <- ""
 }
+
 m_random <- paste0(method_prefix, " (random)")
 m_selective <- paste0(method_prefix, " (selective)")
 fig.dir <- "figures"
@@ -72,6 +83,15 @@ custom_shapes <- setNames(c(16, 18, 15, 8), methods_to_keep)
 
 custom_colors <- setNames(c("#E41A1C", "#377EB8", "#4DAF4A", "#FF7F00"), methods_to_keep)
 
+# Log-scaled x-axis with labeled ticks at the calibration sizes of the sweep
+calib_breaks <- c(100, 200, 400, 1000)
+scale_x_calib <- function() {
+  scale_x_log10(breaks = calib_breaks,
+                labels = function(x) format(x, scientific = FALSE, trim = TRUE))
+}
+# geom_errorbar widths are in log10 units once the x-axis is log-scaled
+errw_log <- 0.04
+
 theme_main <- theme_bw() +
   theme(
     text = element_text(size = 15),
@@ -98,12 +118,16 @@ df_summary <- df_all %>%
   group_by(calib_num, method, pvalue_method) %>%
   summarise(
     mean_cov_jk = mean(`Coverage (?)`, na.rm = TRUE),
-    mean_seen_size = mean(`Seen Size`, na.rm = TRUE),
+    # `Size` is the average set size with the joker excluded, i.e. the number
+    # of previously seen labels in the set, the quantity plotted by the
+    # original figures and by the sibling scripts. (`Seen Size` is instead
+    # the average size among test points whose label was previously seen.)
+    mean_seen_size = mean(`Size`, na.rm = TRUE),
     mean_prop_q = mean(`Prop ?`, na.rm = TRUE),
     mean_prop_unseen = mean(prop_unseen_test, na.rm = TRUE),
     mean_calib_realized = mean(n_calib_realized, na.rm = TRUE),
     se_cov_jk = sd(`Coverage (?)`, na.rm = TRUE)/sqrt(n()),
-    se_seen_size = sd(`Seen Size`, na.rm = TRUE)/sqrt(n()),
+    se_seen_size = sd(`Size`, na.rm = TRUE)/sqrt(n()),
     se_prop_q = sd(`Prop ?`, na.rm = TRUE)/sqrt(n()),
     mean_cov_very_rare = mean(.data[[paste0("Coverage (?) (very_rare) ", cond_method)]], na.rm = TRUE),
     se_cov_very_rare = sd(.data[[paste0("Coverage (?) (very_rare) ", cond_method)]], na.rm = TRUE)/sqrt(sum(!is.na(.data[[paste0("Coverage (?) (very_rare) ", cond_method)]]))),
@@ -140,15 +164,15 @@ df_xgt %>%
   filter(method == m_random) %>%
   select(calib_num, n_batches) %>% as.data.frame() %>% print()
 
-# 4. Three-panel figure builder (Coverage / Seen Labels in Set / Joker Prop)
-metric_levels <- c("Coverage", "Seen Labels in Set", "Joker Proportion")
+# 4. Three-panel figure builder (Coverage / Prediction Set Size / Joker Prop)
+metric_levels <- c("Coverage", "Prediction Set Size", "Joker Proportion")
 
 make_three_panel <- function(df, x_var, x_lab, errw, annotate_realized = FALSE) {
   df_three <- bind_rows(
     df %>% select(all_of(x_var), method, mean = mean_cov_jk, lci = lci_cov_jk, uci = uci_cov_jk) %>%
       mutate(metric = "Coverage"),
     df %>% select(all_of(x_var), method, mean = mean_seen_size, lci = lci_seen_size, uci = uci_seen_size) %>%
-      mutate(metric = "Seen Labels in Set"),
+      mutate(metric = "Prediction Set Size"),
     df %>% select(all_of(x_var), method, mean = mean_prop_q, lci = lci_prop_q, uci = uci_prop_q) %>%
       mutate(metric = "Joker Proportion")
   ) %>%
@@ -167,10 +191,11 @@ make_three_panel <- function(df, x_var, x_lab, errw, annotate_realized = FALSE) 
               inherit.aes = FALSE, linetype = "dashed", color = "grey40") +
     facet_wrap(~ metric, scales = "free_y", nrow = 1, ncol = 3) +
     ggh4x::facetted_pos_scales(
-      y = list(metric == "Seen Labels in Set" ~ scale_y_log10())
+      y = list(metric == "Prediction Set Size" ~ scale_y_log10())
     ) +
     scale_color_manual(name = "Method", values = custom_colors, guide = guide_legend(order = 1)) +
     scale_shape_manual(name = "Method", values = custom_shapes, guide = guide_legend(order = 1)) +
+    scale_x_calib() +
     geom_hline(
       data = tibble(metric = factor("Coverage", levels = metric_levels),
                     yintercept = 0.9),
@@ -181,17 +206,30 @@ make_three_panel <- function(df, x_var, x_lab, errw, annotate_realized = FALSE) 
     theme_main
 
   if (annotate_realized) {
-    df_lab <- df_three %>% filter(metric == "Coverage")
-    p <- p + geom_text(data = df_lab,
-                       aes(label = round(.data[[x_var]])),
-                       vjust = -1.1, size = 3.2, check_overlap = TRUE,
-                       show.legend = FALSE)
+    # The realized calibration size next to every point in every panel, in
+    # the method colour, with leader segments where ggrepel moves a label.
+    df_lab <- df_three %>% mutate(lab = round(.data[[x_var]]))
+    if (requireNamespace("ggrepel", quietly = TRUE)) {
+      p <- p + ggrepel::geom_text_repel(data = df_lab, aes(label = lab),
+                                        size = 3, show.legend = FALSE,
+                                        segment.color = "grey60",
+                                        segment.size = 0.3,
+                                        min.segment.length = 0,
+                                        box.padding = 0.35,
+                                        point.padding = 0.2,
+                                        max.overlaps = Inf, seed = 1)
+    } else {
+      p <- p + geom_text(data = df_lab,
+                         aes(label = lab,
+                             vjust = ifelse(grepl("selective", method), 1.9, -0.9)),
+                         size = 3, show.legend = FALSE)
+    }
   }
   p
 }
 
 # 5. Nominal calibration size on the x-axis
-p_nominal <- make_three_panel(df_xgt, "calib_num", "Calibration sample size", 30)
+p_nominal <- make_three_panel(df_xgt, "calib_num", "Calibration sample size", errw_log)
 print(p_nominal)
 ofile <- paste0("dp_three_panel_s2_lof_varyCalib", out_suffix, ".pdf")
 ggsave(file.path(fig.dir, ofile), p_nominal, width = 13.5, height = 3.5, units = "in")
@@ -200,7 +238,7 @@ cat(sprintf(">>> wrote %s\n", file.path(fig.dir, ofile)))
 # 6. Realized (effective) calibration size on the x-axis, annotated
 p_realized <- make_three_panel(df_xgt %>% mutate(calib_realized = mean_calib_realized),
                                "calib_realized",
-                               "Realized calibration sample size", 30,
+                               "Realized calibration sample size", errw_log,
                                annotate_realized = TRUE)
 print(p_realized)
 ofile <- paste0("dp_three_panel_realized_calib", out_suffix, ".pdf")
@@ -226,10 +264,11 @@ df_cond <- df_xgt %>%
 p_cond <- ggplot(df_cond, aes(x = calib_num, y = mean, color = method, shape = method)) +
   geom_line(linewidth = 1) +
   geom_point(size = 2) +
-  geom_errorbar(aes(ymin = lci, ymax = uci), width = 30, linewidth = 0.7) +
+  geom_errorbar(aes(ymin = lci, ymax = uci), width = errw_log, linewidth = 0.7) +
   facet_wrap(~ frequency_type, scales = "fixed", nrow = 1) +
   scale_color_manual(name = "Method", values = custom_colors, guide = guide_legend(order = 1)) +
   scale_shape_manual(name = "Method", values = custom_shapes, guide = guide_legend(order = 1)) +
+  scale_x_calib() +
   geom_hline(yintercept = 0.9, linetype = "dashed", color = "black", alpha = 0.5) +
   labs(x = "Calibration sample size", y = "Coverage") +
   theme_main +
@@ -237,12 +276,13 @@ p_cond <- ggplot(df_cond, aes(x = calib_num, y = mean, color = method, shape = m
         axis.text = element_text(size = 14),
         legend.text = element_text(size = 14),
         legend.title = element_text(size = 16),
-        legend.position = "top",
-        legend.direction = "horizontal")
+        panel.spacing.x = grid::unit(1.2, "lines"),
+        legend.position = "right",
+        legend.direction = "vertical")
 
 print(p_cond)
 ofile <- paste0("dp_cond_cov_four_levels_s2_lof_varyCalib", out_suffix, ".pdf")
-ggsave(file.path(fig.dir, ofile), p_cond, width = 11.5, height = 3.5, units = "in")
+ggsave(file.path(fig.dir, ofile), p_cond, width = 13.5, height = 3.5, units = "in")
 cat(sprintf(">>> wrote %s\n", file.path(fig.dir, ofile)))
 
 cat("\nAll done.\n")

@@ -43,6 +43,8 @@ theme_paper <- theme_bw() +
     axis.text = element_text(size = 12),
     legend.title = element_text(size = 14),
     legend.text = element_text(size = 12),
+    legend.position = "right",
+    legend.direction = "vertical",
     strip.text = element_text(size = 13),
     panel.grid.major = element_line(linewidth = 0.5),
     panel.grid.minor = element_blank()

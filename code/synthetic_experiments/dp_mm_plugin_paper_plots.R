@@ -130,8 +130,8 @@ theme_main <- theme_bw() +
     panel.grid.major = element_line(linewidth = 0.5),
     panel.grid.minor = element_blank(),
     strip.text = element_text(size = 15),
-    legend.position = "top",
-    legend.direction = "horizontal"
+    legend.position = "right",
+    legend.direction = "vertical"
   )
 
 # ============================================================
@@ -214,13 +214,14 @@ make_cond_cov <- function(df, x_var, x_lab, errw, out_file, log_x = FALSE) {
     labs(x = x_lab, y = "Coverage") +
     theme_main +
     theme(strip.text = element_text(size = 16),
+          panel.spacing.x = grid::unit(2, "lines"),
           axis.text = element_text(size = 14),
           legend.text = element_text(size = 14),
           legend.title = element_text(size = 16))
   if (log_x) p <- p + scale_x_log10(labels = label_comma())
 
   print(p)
-  ggsave(out_file, p, width = 11.5, height = 3.5, units = "in")
+  ggsave(out_file, p, width = 13.5, height = 3.5, units = "in")
   cat(">>> wrote", out_file, "\n")
 }
 
@@ -252,6 +253,8 @@ make_prop_joker <- function(df, x_var, x_lab, errw, out_file, log_x = FALSE) {
       axis.text = element_text(size = 14),
       legend.title = element_text(size = 14),
       legend.text = element_text(size = 14),
+      legend.position = "right",
+      legend.direction = "vertical",
       panel.grid.major = element_line(linewidth = 0.5),
       panel.grid.minor = element_blank()
     )
@@ -313,10 +316,11 @@ p_full <- ggplot(df_combined,
              aes(yintercept = yintercept), linetype = "dashed", color = "black") +
   labs(x = "Dirichlet concentration parameter", y = "") +
   theme_main +
-  theme(strip.text = element_text(size = 14))
+  theme(strip.text = element_text(size = 14),
+        panel.spacing.x = grid::unit(2, "lines"))
 
 print(p_full)
-ggsave(sprintf("%s/dp_mm_pvalue_full.pdf", fig.dir), p_full, width = 12.5, height = 7, units = "in")
+ggsave(sprintf("%s/dp_mm_pvalue_full.pdf", fig.dir), p_full, width = 14.5, height = 7, units = "in")
 cat(">>> wrote dp_mm_pvalue_full.pdf\n")
 
 # Tuned (deployed, mm-adjusted) alpha allocation vs theta (appendix)
@@ -350,6 +354,8 @@ p_tuned_alphas <- ggplot(df_alpha_values,
     axis.text = element_text(size = 14),
     legend.title = element_text(size = 16),
     legend.text = element_text(size = 16),
+    legend.position = "right",
+    legend.direction = "vertical",
     panel.grid.major = element_line(linewidth = 0.5),
     panel.grid.minor = element_blank()
   )

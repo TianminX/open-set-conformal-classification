@@ -83,10 +83,14 @@ df_real_analysis <- df_real_mixed_labels %>%
     se_alpha_old = sd(alpha_old, na.rm = TRUE)/sqrt(n()),
     mean_cov_jk = mean(`Coverage (?)`, na.rm = TRUE),
     mean_size = mean(`Size`, na.rm = TRUE),
+    # The archived full p-value grid used Size (?) (including the joker).
+    # Preserve that figure's original values while the performance plot uses Size.
+    mean_size_with_joker = mean(`Size (?)`, na.rm = TRUE),
     mean_prop_q = mean(`Prop ?`, na.rm = TRUE),
     mean_prop_unseen = mean(prop_unseen_test, na.rm = TRUE),
     se_cov_jk = sd(`Coverage (?)`, na.rm = TRUE)/sqrt(n()),
     se_size = sd(`Size`, na.rm = TRUE)/sqrt(n()),
+    se_size_with_joker = sd(`Size (?)`, na.rm = TRUE)/sqrt(n()),
     se_prop_q = sd(`Prop ?`, na.rm = TRUE)/sqrt(n()),
     n_batches = n(),
     .groups = "drop"
@@ -102,6 +106,8 @@ df_real_analysis <- df_real_mixed_labels %>%
     uci_cov_jk = mean_cov_jk + 1.96*se_cov_jk,
     lci_size = mean_size - 1.96*se_size,
     uci_size = mean_size + 1.96*se_size,
+    lci_size_with_joker = mean_size_with_joker - 1.96*se_size_with_joker,
+    uci_size_with_joker = mean_size_with_joker + 1.96*se_size_with_joker,
     lci_prop_q = mean_prop_q - 1.96*se_prop_q,
     uci_prop_q = mean_prop_q + 1.96*se_prop_q
   )
@@ -166,7 +172,8 @@ df_combined <- bind_rows(
     mutate(metric = "Coverage"),
   df_real_analysis %>%
     select(n_label_total, method, pvalue_method,
-           mean = mean_size, lci = lci_size, uci = uci_size) %>%
+           mean = mean_size_with_joker, lci = lci_size_with_joker,
+           uci = uci_size_with_joker) %>%
     mutate(metric = "Size"),
   df_real_analysis %>%
     select(n_label_total, method, pvalue_method,
@@ -204,8 +211,8 @@ p_real_combined <- ggplot(df_combined,
     panel.grid.major = element_line(size = 0.5),
     panel.grid.minor = element_blank(),
     strip.text = element_text(size = 14),
-    legend.position = "top",
-    legend.direction = "horizontal"
+    legend.position = "right",
+    legend.direction = "vertical"
   )
 
 print(p_real_combined)

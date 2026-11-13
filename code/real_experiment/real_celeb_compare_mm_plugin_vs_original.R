@@ -88,7 +88,7 @@ if (!"mu_hat" %in% names(df_orig_all))
   df_orig_all <- df_orig_all %>% mutate(mu_hat = NA_real_)
 
 # ---- shared plotting bits ---------------------------------------------------
-theme_cmp <- theme_bw() + theme(legend.position = "bottom")
+theme_cmp <- theme_bw() + theme(legend.position = "right", legend.direction = "vertical")
 
 # Paper version formatting follows the old-repo figure conventions
 # (dp_mixed_final_conditional.R): larger fonts, grey facet strips,
@@ -105,12 +105,13 @@ theme_paper <- theme_bw() +
     panel.grid.minor = element_blank(),
     strip.text = element_text(size = 16, face = "plain"),
     strip.background = element_rect(fill = "grey90", color = "black"),
-    legend.position = "top"
+    legend.position = "right",
+    legend.direction = "vertical"
   )
 
 # Distinguish the two methods by shape as well as colour (cf. custom_shapes
 # in the old dp_mixed_final_conditional.R), so they remain readable in B/W.
-source_shapes <- c("Original CGTC" = 16, "CGTC+" = 18)
+source_shapes <- c("CGTC" = 16, "CGTC+" = 18)
 
 # ============================================================
 # One full comparison (all plots + diff table) for a split setting
@@ -157,9 +158,9 @@ run_comparison <- function(split_name, method_row, flag) {
         source = label)
   }
 
-  dat <- bind_rows(prep(df_orig, "Original CGTC"),
+  dat <- bind_rows(prep(df_orig, "CGTC"),
                    prep(df_new,  "CGTC+")) %>%
-    mutate(source = factor(source, levels = c("Original CGTC", "CGTC+")))
+    mutate(source = factor(source, levels = c("CGTC", "CGTC+")))
 
   if (nrow(dat) == 0) {
     warning("No rows match the selected knobs for split '", split_name,
@@ -272,7 +273,7 @@ run_comparison <- function(split_name, method_row, flag) {
          color = NULL, fill = NULL, shape = NULL) +
     theme_paper
 
-  ggsave(out_file("size_joker_paper"), p_size_paper, width = 12, height = 3.8)
+  ggsave(out_file("size_joker_paper"), p_size_paper, width = 12, height = 3.45)
   cat(">>> wrote", out_file("size_joker_paper"), "\n")
 
   # ============================================================
@@ -316,16 +317,16 @@ run_comparison <- function(split_name, method_row, flag) {
                 values_from = c(cov_marginal.m, size.m, prop_joker.m,
                                 alpha_class.m, alpha_seen.m, alpha_unseen.m)) %>%
     mutate(
-      d_cov          = `cov_marginal.m_CGTC+` - `cov_marginal.m_Original CGTC`,
-      d_size         = `size.m_CGTC+`         - `size.m_Original CGTC`,
-      d_prop_joker   = `prop_joker.m_CGTC+`   - `prop_joker.m_Original CGTC`,
-      d_alpha_class  = `alpha_class.m_CGTC+`  - `alpha_class.m_Original CGTC`,
-      d_alpha_seen   = `alpha_seen.m_CGTC+`   - `alpha_seen.m_Original CGTC`,
-      d_alpha_unseen = `alpha_unseen.m_CGTC+` - `alpha_unseen.m_Original CGTC`) %>%
+      d_cov          = `cov_marginal.m_CGTC+` - `cov_marginal.m_CGTC`,
+      d_size         = `size.m_CGTC+`         - `size.m_CGTC`,
+      d_prop_joker   = `prop_joker.m_CGTC+`   - `prop_joker.m_CGTC`,
+      d_alpha_class  = `alpha_class.m_CGTC+`  - `alpha_class.m_CGTC`,
+      d_alpha_seen   = `alpha_seen.m_CGTC+`   - `alpha_seen.m_CGTC`,
+      d_alpha_unseen = `alpha_unseen.m_CGTC+` - `alpha_unseen.m_CGTC`) %>%
     select(n_ref, d_cov, d_size, d_prop_joker,
            d_alpha_class, d_alpha_seen, d_alpha_unseen)
 
-  cat(sprintf("\n=== Differences (MM-plugin - Original CGTC), split = %s ===\n",
+  cat(sprintf("\n=== Differences (MM-plugin - CGTC), split = %s ===\n",
               split_name))
   print(as.data.frame(diff_tbl), digits = 4)
 
