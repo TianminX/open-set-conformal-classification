@@ -16,8 +16,9 @@ CALIB_PROPORTION=0.1
 # List of alpha_total values (total significance budget)
 ALPHA_TOTAL_LIST=(0.20)
 
-# List of lambda_weight values (weight parameter for loss function, between 0 and 1)
-LAMBDA_WEIGHT_LIST=(0.25 0.50)
+# List of lambda_weight values (weight parameter for loss function, between 0 and 1);
+# 0.50 is the default of the paper, 0.30 and 0.70 are used in its sensitivity study
+LAMBDA_WEIGHT_LIST=(0.30 0.50 0.70)
 
 # List of n_label_total values (for uniform sampling, 0 to skip)
 N_LABEL_TOTAL_LIST=(2000) # (500 1000 3000 4000)
@@ -28,7 +29,9 @@ K_TOP_LIST=(0)
 # List of k_bot values (bottom k celebrities to keep, 0 to skip)
 K_BOT_LIST=(0)
 
-# Splitting method used inside the plug-in CV (0 = random, 1 = bernoulli)
+# Splitting method used inside the plug-in CV (0 = random, 1 = bernoulli);
+# the paper uses 0, except in its comparison of CGTC+ with CGTC, which uses 1
+# (at lambda_weight 0.50) for both methods
 SPLITTING_METHOD_LIST=(0)
 
 # Cap-grid size G for the plug-in CV (number of subdivisions of alpha_remaining)

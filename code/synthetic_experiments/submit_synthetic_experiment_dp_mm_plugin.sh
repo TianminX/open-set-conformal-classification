@@ -3,14 +3,13 @@
 # Submit SLURM jobs for the CV-tuned plug-in missing-mass allocation experiment.
 # One job per parameter combination; jobs whose output CSV already exists are skipped.
 
-# Fixed theta for the asymptotic regime (we vary n_ref instead)
+# Reference-size sweep of the paper (theta fixed, n_ref varied): to run it,
+# use these two lists in place of the ones below.
 # THETA_LIST=(100)
-
-# Reference sizes, log-spaced from 1000 to 100000 (asymptotic regime)
 # N_REF_LIST=(1000 2000 5000 10000 20000)
 
 # List of different theta values to experiment with
-THETA_LIST=(12 25 50 100 200 300 400 500 600 700 800 900 1000)
+THETA_LIST=(12 25 50 100 200 300 400 500 600 700 800 900 1000 1100 1200 1300 1400 1500)
 
 # List of different n_ref values
 N_REF_LIST=(2000)
@@ -30,8 +29,9 @@ LAMBDA_WEIGHT_LIST=(0.50)
 # List of batch numbers
 BATCH_LIST=$(seq 1 10)
 
-# Splitting method used inside the CV (0 = random, 1 = bernoulli)
-SPLITTING_METHOD_LIST=(0 1)
+# Splitting method used inside the CV (0 = random, 1 = bernoulli);
+# the synthetic results in the paper use 0
+SPLITTING_METHOD_LIST=(0)
 
 # Cap-grid size G for the plug-in CV (number of subdivisions of alpha_remaining)
 GRID_SIZE_LIST=(20)

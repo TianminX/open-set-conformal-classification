@@ -1,7 +1,11 @@
 #!/bin/bash
 
+# Submit SLURM jobs for CGTC (our method without the missing-mass adjustment)
+# on synthetic data. The default lists below give the theta sweep reported in
+# the paper; the comments list the settings of the other runs.
+
 # List of different theta values to experiment with
-THETA_LIST=(1000) #(500 1000) #12 25 50 100 200 300 400 500 600 700 800 900 1000
+THETA_LIST=(12 25 50 100 200 300 400 500 600 700 800 900 1000)
 
 # List of different n_ref values
 N_REF_LIST=(2000)
@@ -9,8 +13,9 @@ N_REF_LIST=(2000)
 # List of n_test values
 N_TEST_LIST=(1000)
 
-# Calibration proportion (e.g., 0.1 means 10% of n_ref)
-CALIB_PROPORTION_LIST=(0.05 0.1 0.2 0.5) # (0.1)
+# Calibration proportion (e.g., 0.1 means 10% of n_ref); the calibration-size
+# sweep uses THETA_LIST=(1000) with (0.05 0.1 0.2 0.5)
+CALIB_PROPORTION_LIST=(0.1)
 
 # List of alpha_total values (total significance budget)
 ALPHA_TOTAL_LIST=(0.10)
@@ -27,8 +32,9 @@ TUNING_METHOD_LIST=(0)
 # List of one-class classifiers
 OCC_NAME_LIST=(lof) #iforest ocsvm lof 
 
-# Whether to use CV for beta (True or False)
-BETA_CV_LIST=(False) #True False 
+# Whether to select beta by cross-validation (True, as in the paper) or to fix
+# it at 1.6 (False, as in the runs read by dp_freq0_freq1_plot.R)
+BETA_CV_LIST=(True)
 
 
 # SLURM parameters
