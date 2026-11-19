@@ -740,11 +740,10 @@ def tune_alpha_allocation_loss_all_optimized(
     inflated per fold by α_class_adj = α_class / (1 - μ_hat), with
     μ_hat = M_1 / n. This is an EARLIER missing-mass correction that does NOT
     match the plug-in adjustment in the paper (wrong μ_hat, no cap on
-    α_unseen, no reallocation of the unseen surplus). Its only remaining caller
-    is synthetic_experiments/synthetic_experiment_dp_mm_stale.py. Do not enable
-    it for new runs -- use cgtc/alpha_tune_plugin.py instead. The grid search is
-    over the *unadjusted* α_class values, and the returned best α_class is
-    unadjusted.
+    α_unseen, no reallocation of the unseen surplus). No experiment script in
+    this repository uses it. Do not enable it for new runs -- use
+    cgtc/alpha_tune_plugin.py instead. The grid search is over the
+    *unadjusted* α_class values, and the returned best α_class is unadjusted.
     """
 
     def _alpha_grid(max_alpha_class: float, start=0.01, step=None, ndigits=3):

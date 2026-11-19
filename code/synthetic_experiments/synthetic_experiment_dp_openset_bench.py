@@ -37,8 +37,8 @@ from distributions_y import DirichletProcess
 #
 # Families (methods run in one job):
 #   naive : Naive baseline, the feature-blind Good-Turing constant
-#           (black_boxes.GTOpenSetKNN, as in synthetic_experiment_gt_knn.py);
-#           the mode argument is ignored (output folder dp_bench_naive)
+#           (black_boxes.GTOpenSetKNN); the mode argument is ignored
+#           (output folder dp_bench_naive)
 #   occ   : OCC (LOF) raw + recalibrated: LocalOutlierFactor(n_neighbors=1),
 #           centered at its inlier value 1 and divided by 2 (as on CelebA)
 #   knn1  : KNN-dist (k=1) raw + recalibrated: distance to the nearest
@@ -197,8 +197,8 @@ def make_occ():
                                   occ_offset=1.0, occ_scale=2.0, **KNN_KW)
 
 
-# Methods to evaluate (random internal split only). Method names are the CSV
-# row keys read by dp_compare_mm_plugin_vs_openset_bench.R.
+# Methods to evaluate (random internal split only). Method names are the row
+# keys of the output CSV.
 if family == 'naive':
     methods_list = {
         'Method (GT-KNN)': black_boxes.GTOpenSetKNN(**KNN_KW),

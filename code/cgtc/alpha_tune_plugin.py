@@ -1,5 +1,5 @@
 """
-Plug-in missing-mass budget allocation (paper revision).
+Plug-in missing-mass budget allocation.
 
 This module implements the updated, CV-tuned allocation method:
 "Data-Driven Allocation with Missing-Mass Adjustments".

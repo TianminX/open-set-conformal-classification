@@ -27,7 +27,7 @@ from testing import select_beta_cv
 if len(sys.argv) != 11:
     print("Error: incorrect number of parameters.")
     print(
-        "Usage: python real_experiment_alpha_tune_three.py n_ref n_test calib_number alpha_total lambda_weight n_label_total k_top k_bot batch_num tuning_method")
+        "Usage: python real_experiment_celeb.py n_ref n_test calib_number alpha_total lambda_weight n_label_total k_top k_bot batch_num tuning_method")
     print("tuning_method: 0 for 'random', 1 for 'bernoulli'")
     quit()
 

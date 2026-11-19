@@ -5,7 +5,7 @@ library(tidyverse)
 # Probability mass of the four test-label frequency bins used in the
 # stratified-coverage figure (dp_mm_cond_cov_four_levels.pdf), as a
 # function of the Dirichlet concentration parameter theta
-# (dp_bin_mass.pdf, manuscript appendix and response letter).
+# (dp_bin_mass.pdf, manuscript appendix).
 # Bins follow the "fixed" binning of cgtc/conformal_methods.py, based on
 # the frequency of the test label among the n_ref reference observations:
 #   very rare   = frequency 0 or 1 (unseen or singleton)

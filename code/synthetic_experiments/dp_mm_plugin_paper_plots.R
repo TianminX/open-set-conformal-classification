@@ -4,12 +4,12 @@ library(scales)
 library(ggh4x)
 
 # ============================================================
-# Main-paper figures for the UPDATED method: CGTC with the
+# Main-paper figures for CGTC+: CGTC with the
 # plug-in missing-mass adjustment and CV-selected beta.
 #   data: results_hpc/dp_tuned_mixed_labels_mm_plugin/  (split0)
 #
-# Drop-in replacements for the original-CGTC main figures
-# (dp_original_plot_v2.R), same style and dimensions:
+# Counterparts of the CGTC figures (dp_original_appendix_plots.R),
+# with the same style and dimensions:
 #   dp_mm_four_panel_90_joker_size.pdf   <- dp_four_panel_90_joker_size.pdf
 #   dp_mm_cond_cov_four_levels.pdf       <- dp_cond_cov_four_levels.pdf
 #   dp_mm_pvalue_propjoker.pdf           <- dp_pvalue_propjoker.pdf

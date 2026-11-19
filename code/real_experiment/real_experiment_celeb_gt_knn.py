@@ -24,9 +24,8 @@ from conformal_methods import (
 # GT-constant baseline open-set classifier on the CelebA real data: the KNN
 # closed-set classifier (same base as the CGTC pipeline) with a constant
 # unknown-class column equal to the empirical Good-Turing missing-mass
-# estimate M1/n computed on the training split. Real-data counterpart of
-# synthetic_experiment_gt_knn.py and a feature-blind, marginally calibrated
-# baseline for real_experiment_celeb_openmax.py.
+# estimate M1/n computed on the training split. A feature-blind, marginally
+# calibrated baseline for real_experiment_celeb_openmax.py.
 #
 # The classifier outputs K+1 probabilities (K training classes + 1 unknown) and
 # standard split conformal is applied over the (K+1)-class space; calibration
@@ -85,10 +84,9 @@ print(f"subsampling_scheme: {subsampling_scheme}")
 # Define Output Dir #
 #####################
 
-# Optional results-folder suffix (CELEB_RESULTS_SUFFIX, e.g. "_large" as set
-# by submit_real_experiment_celeb_large_nref.sh) so that runs outside the
-# paper's n_ref grid stay out of the folders the figure scripts read; the
-# file names inside the folder are unchanged.
+# Optional results-folder suffix (environment variable CELEB_RESULTS_SUFFIX,
+# e.g. "_large"), so that runs outside the main n_ref grid are written to a
+# separate folder; the file names inside the folder are unchanged.
 results_suffix = os.environ.get("CELEB_RESULTS_SUFFIX", "")
 output_file = (
     f"results/celeb_gt_knn{results_suffix}/"

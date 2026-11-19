@@ -13,9 +13,6 @@ library(ggh4x)
 # number of previously seen labels in the prediction set (the joker
 # symbol is excluded from the count; CSV column `Size`), under the panel
 # title "Prediction Set Size" used by the original CGTC figures.
-# (Until 2026-10-21 this file used the column `Seen Size`, the average
-# size among test points with a previously seen label, which is a
-# different quantity; see the note in the summary step.)
 # The x-axis is log10-scaled with labeled ticks at the four calibration
 # sizes 100, 200, 400, 1000, as in the original figures.
 # Data: runs of synthetic_experiment_dp.py with theta = 1000,
@@ -24,21 +21,20 @@ library(ggh4x)
 # calibration size (n_calib_realized) under each splitting scheme.
 # Expected under results_hpc/dp_tuned_mixed_labels/vary_calprop/.
 # Run from code/synthetic_experiments/; outputs are written to figures/.
-# NOTE: reconstruction. The original plotting script for these figures
-# was not preserved; this file re-derives them from the same summary
-# machinery as dp_vary_occ_plots.R. Since 2026-10-21 both sweeps share
-# one layout (that of the vary-OCC figures: log10 x-axis, dashed grey
-# unseen-label proportion in the joker panel, legend on the right,
-# 13.5 x 3.5 in pages), and the realized-size figure labels every point
-# in every panel with its realized calibration size in the method
-# colour, with leader segments drawn by ggrepel.
+# The figures use the same summary machinery as dp_vary_occ_plots.R.
+# Both sweeps share one layout (that of the vary-OCC figures: log10
+# x-axis, dashed grey unseen-label proportion in the joker panel,
+# legend on the right, 13.5 x 3.5 in pages), and the realized-size
+# figure labels every point in every panel with its realized
+# calibration size in the method colour, with leader segments drawn
+# by ggrepel.
 # ============================================================
 
 # Variant switch (environment variable VARY_CALPROP_VARIANT):
 #   cgtc (default): original-CGTC sweep from synthetic_experiment_dp.py,
 #                   results_hpc/dp_tuned_mixed_labels/vary_calprop, outputs as above.
-#   mm:             CGTC+ sweep from synthetic_experiment_dp_mm_plugin.py via
-#                   submit_synthetic_experiment_dp_mm_plugin_vary_calprop.sh,
+#   mm:             CGTC+ sweep from synthetic_experiment_dp_mm_plugin.py with
+#                   DP_MM_RESULTS_SUFFIX = "_vary_calprop",
 #                   results_hpc/dp_tuned_mixed_labels_mm_plugin_vary_calprop,
 #                   outputs with the suffix "_mm" before ".pdf".
 variant <- Sys.getenv("VARY_CALPROP_VARIANT", "cgtc")

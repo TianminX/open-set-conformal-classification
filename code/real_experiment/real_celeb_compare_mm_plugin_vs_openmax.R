@@ -59,7 +59,7 @@ KBOT        <- 0
 # up new results automatically and omit sources that are not there yet.
 SCALE_DIR   <- function(family) sprintf("results_hpc/celeb_bench_%s_scale/", family)
 ISO_DIR     <- function(family) sprintf("results_hpc/celeb_bench_%s_isotonic/", family)
-# Large-n_ref extension (submit_real_experiment_celeb_large_nref.sh): the same
+# Large-n_ref extension (CELEB_RESULTS_SUFFIX = "_large"): the same
 # runs at n_ref beyond 6000, stored in sibling folders "<folder>_large/" so
 # that the other figure scripts never see them. Every loader below reads a
 # folder together with its _large sibling when that exists; the per-setting
@@ -110,8 +110,8 @@ with_large <- function(path) {
 #                recalibration.
 #   "occ"      : Recal-OCC (LOF), Iso-OCC (LOF), Iso-OCC (OCSVM g=20).
 # Isolation forest and default-bandwidth OCSVM results are not plotted.
-#   "main_large": the "main" setting on the extended n_ref grid of
-#                submit_real_experiment_celeb_large_nref.sh (results in the
+#   "main_large": the "main" setting on the extended n_ref grid given in
+#                the README (results in the
 #                sibling folders results_hpc/<folder>_large/, log x axis):
 #                the methods should approach each other as the missing
 #                mass vanishes and the problem becomes closed-set. Plots

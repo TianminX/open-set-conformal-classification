@@ -4,11 +4,11 @@ library(scales)
 library(ggh4x)
 
 # ============================================================
-# Main-paper CelebA figures for the UPDATED method: CGTC with the
+# Main-paper CelebA figures for CGTC+: CGTC with the
 # plug-in missing-mass adjustment and CV-selected beta.
 #   data: results_hpc/celeb_mm_plugin/
 #
-# IMPORTANT filters (per 2026-07-31 instructions):
+# Filters:
 #   - only the CV-selected-beta runs  (files named celeb_betacv_*)
 #   - only batches 1-20               (some settings have extra batches)
 #
@@ -22,8 +22,8 @@ library(ggh4x)
 #   celeb_mm_pvalue_propjoker.pdf           (appendix)
 #   celeb_mm_pvalue_full.pdf                (appendix)
 #   celeb_mm_tuned_alphas.pdf               (appendix)
-# Unsuffixed = split0 (CV tuning under random splitting, matching the
-# old figure's tune0); *_split1.pdf = CV tuning under Bernoulli splitting.
+# Unsuffixed = split0 (CV tuning under random splitting, matching tune0
+# of the CGTC figures); *_split1.pdf = CV tuning under Bernoulli splitting.
 # ============================================================
 
 RESULTS_DIR <- "results_hpc/celeb_mm_plugin/"

@@ -9,10 +9,9 @@ library(ggh4x)
 #   celeb_four_panel_80_joker_size_nlab.pdf   (3-panel performance)
 #   celeb_pvalue_full_nlab.pdf                (metric x p-value grid)
 #   celeb_tuned_alphas_nlab.pdf               (tuned alpha allocation)
-# Data: the archived celeb_tuned_mixed_labels snapshot (tune1 runs of
-# real_experiment_celeb.py with the n_label_total sweep), collected
-# under results_hpc/celeb_tuned_mixed_labels/; the revision-era rerun
-# did not repeat the varying-number-of-labels setting.
+# Data: the tune1 runs of real_experiment_celeb.py with the
+# n_label_total sweep, collected under
+# results_hpc/celeb_tuned_mixed_labels/.
 # Run from code/real_experiment/; outputs are written to figures/.
 # ============================================================
 
@@ -83,8 +82,8 @@ df_real_analysis <- df_real_mixed_labels %>%
     se_alpha_old = sd(alpha_old, na.rm = TRUE)/sqrt(n()),
     mean_cov_jk = mean(`Coverage (?)`, na.rm = TRUE),
     mean_size = mean(`Size`, na.rm = TRUE),
-    # The archived full p-value grid used Size (?) (including the joker).
-    # Preserve that figure's original values while the performance plot uses Size.
+    # The full p-value grid uses Size (?) (including the joker), while the
+    # performance plot uses Size.
     mean_size_with_joker = mean(`Size (?)`, na.rm = TRUE),
     mean_prop_q = mean(`Prop ?`, na.rm = TRUE),
     mean_prop_unseen = mean(prop_unseen_test, na.rm = TRUE),

@@ -103,9 +103,9 @@ print(f"batch_num: {batch_num}")
 #####################
 
 beta_label = "betacv" if beta_cv else f"beta{default_beta}"
-# Optional results-folder suffix (DP_MM_RESULTS_SUFFIX, e.g. "_vary_calprop" as
-# set by submit_synthetic_experiment_dp_mm_plugin_vary_calprop.sh), so that
-# side experiments do not land in the main theta-sweep folder.
+# Optional results-folder suffix (environment variable DP_MM_RESULTS_SUFFIX,
+# e.g. "_vary_calprop"), so that side experiments do not land in the main
+# theta-sweep folder.
 results_suffix = os.environ.get("DP_MM_RESULTS_SUFFIX", "")
 output_file = (
     f"results/dp_tuned_mixed_labels_mm_plugin{results_suffix}/"

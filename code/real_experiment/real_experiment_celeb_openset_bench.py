@@ -131,10 +131,9 @@ print(f"subsampling_scheme: {subsampling_scheme}")
 #####################
 
 tag = f"celeb_bench_{family}_{recal_mode}"
-# Optional results-folder suffix (CELEB_RESULTS_SUFFIX, e.g. "_large" as set
-# by submit_real_experiment_celeb_large_nref.sh) so that runs outside the
-# paper's n_ref grid stay out of the folders the figure scripts read; the
-# file names inside the folder are unchanged.
+# Optional results-folder suffix (environment variable CELEB_RESULTS_SUFFIX,
+# e.g. "_large"), so that runs outside the main n_ref grid are written to a
+# separate folder; the file names inside the folder are unchanged.
 results_suffix = os.environ.get("CELEB_RESULTS_SUFFIX", "")
 output_file = (
     f"results/{tag}{results_suffix}/"
@@ -248,7 +247,7 @@ def make_occ(variant):
 
 
 # Methods to evaluate (random internal split only). Method names are the
-# CSV row keys read by make_openset_benchmark_table.py and the R plot script.
+# row keys of the output CSV.
 if family == 'knn':
     methods_list = {
         'Method (Recal KNN-dist k=10)': recal(make_knn_dist(n_neighbors)),

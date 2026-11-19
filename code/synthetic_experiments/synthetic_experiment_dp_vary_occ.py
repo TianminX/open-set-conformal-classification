@@ -27,11 +27,11 @@ from testing import select_beta_cv
 # Define parameters #
 #####################
 
-# OCC sensitivity rerun (response letter, Referee 1 Q5): identical to
+# Sensitivity to the one-class classifier: identical to
 # synthetic_experiment_dp.py (CV-selected beta) except that the one-class
-# classifier is a command-line argument and the iforest/ocsvm choices use the
-# configurations described in the response letter (100-tree Isolation Forest on
-# the full sample; RBF OCSVM with adaptive bandwidth).
+# classifier is a command-line argument and the iforest/ocsvm choices use a
+# 100-tree Isolation Forest on the full sample and an RBF OCSVM with adaptive
+# bandwidth.
 #
 # Parse command-line arguments
 # Tuned mode:  python synthetic_experiment_dp_vary_occ.py theta n_ref n_test calib_num alpha_total lambda_weight batch_num tuning_method_flag occ_name

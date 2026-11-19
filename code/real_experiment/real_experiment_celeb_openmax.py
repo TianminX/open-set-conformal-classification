@@ -24,8 +24,8 @@ from conformal_methods import (
 #####################
 
 # Direct conformalization of off-the-shelf open-set classifiers (OpenMax) on
-# the CelebA real data. Real-data counterpart of synthetic_experiment_openmax.py
-# and the baseline comparison for real_experiment_celeb_mm_plugin.py.
+# the CelebA real data, as a baseline comparison for
+# real_experiment_celeb_mm_plugin.py.
 #
 # The classifier outputs K+1 probabilities (K training classes + 1 unknown) and
 # standard split conformal is applied over the (K+1)-class space; calibration

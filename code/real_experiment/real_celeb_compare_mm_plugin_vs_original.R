@@ -2,13 +2,12 @@ library(data.table)
 library(tidyverse)
 
 # ============================================================
-# Compare, on CelebA, the NEW plug-in missing-mass method
+# Compare, on CelebA, CGTC+ (plug-in missing-mass adjustment)
 #     results_hpc/celeb_mm_plugin/  (real_experiment_celeb_mm_plugin.py)
-# against the ORIGINAL loss-based CGTC method
+# against CGTC (loss-based allocation, no adjustment)
 #     results_hpc/celeb/            (real_experiment_celeb.py)
 #
-# Real-data counterpart of dp_compare_mm_plugin_vs_cgtc.R, with n_ref on the
-# x-axis instead of theta. Three outputs per split setting:
+# Three outputs per split setting, with n_ref on the x-axis:
 #   1) coverage vs n_ref      (marginal / seen / unseen)
 #   2) set size & joker proportion vs n_ref
 #   3) alpha allocation vs n_ref (class / seen / unseen, with mu_hat reference)
@@ -33,8 +32,6 @@ COV_COL    <- "Coverage (?)"          # marginal coverage (counts joker "?")
 # One row per split setting. `flag` filters tuning_method_flag (original) and
 # splitting_method_flag (plug-in), so both methods are tuned under the same CV
 # split (apples-to-apples); `method_row` picks the matching method row.
-# To compare the OLD random-split data instead, point ORIG_DIR to
-# "results_hpc/celeb_copy_from_old/" and keep only the random row.
 SPLIT_SETTINGS <- tribble(
   ~split_name, ~method_row,                 ~flag,
   "bernoulli", "Method (Bernoulli)",         1,
@@ -90,8 +87,7 @@ if (!"mu_hat" %in% names(df_orig_all))
 # ---- shared plotting bits ---------------------------------------------------
 theme_cmp <- theme_bw() + theme(legend.position = "right", legend.direction = "vertical")
 
-# Paper version formatting follows the old-repo figure conventions
-# (dp_mixed_final_conditional.R): larger fonts, grey facet strips,
+# Paper version formatting: larger fonts, grey facet strips,
 # thicker lines/points, no title and no explanatory caption
 # (those belong in the LaTeX figure caption instead).
 theme_paper <- theme_bw() +
@@ -109,8 +105,8 @@ theme_paper <- theme_bw() +
     legend.direction = "vertical"
   )
 
-# Distinguish the two methods by shape as well as colour (cf. custom_shapes
-# in the old dp_mixed_final_conditional.R), so they remain readable in B/W.
+# Distinguish the two methods by shape as well as colour, so they remain
+# readable in B/W.
 source_shapes <- c("CGTC" = 16, "CGTC+" = 18)
 
 # ============================================================

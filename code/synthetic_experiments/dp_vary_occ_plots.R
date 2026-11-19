@@ -4,20 +4,17 @@ library(scales)
 library(ggh4x)
 
 # ============================================================
-# Vary-OCC figures (Isolation Forest / OCSVM) for the response
-# letter (Referee 1 Q5) and Appendix app:occ-sensitivity, in the
-# revised layout of the manuscript appendix figures
-# (dp_original_appendix_plots.R):
-#   - the "Unseen Test Label Proportion" panel is dropped; the true
-#     unseen proportion appears instead as a dashed grey reference
-#     line inside the Joker Proportion panel;
-#   - the p-value comparison figure gains the same reference line.
-# Data: results_hpc/dp_tuned_mixed_labels/vary_occ/ (CV-beta rerun via
+# Sensitivity to the one-class classifier (Isolation Forest / OCSVM),
+# in the layout of the CGTC appendix figures
+# (dp_original_appendix_plots.R): the true unseen proportion appears
+# as a dashed grey reference line inside the Joker Proportion panel
+# and in the p-value comparison figure.
+# Data: results_hpc/dp_tuned_mixed_labels/vary_occ/ (CV-selected beta,
 # synthetic_experiment_dp_vary_occ.py: adaptive-bandwidth OCSVM and
 # 100-tree Isolation Forest, tune0 + tune-1; only tune0 is plotted).
 # Run from code/synthetic_experiments/. Outputs (written to figures/):
 #   dp_four_panel_s1_<occ>.pdf           (3 panels)
-#   dp_pvalue_propjoker_s1_<occ>.pdf     (reference line added)
+#   dp_pvalue_propjoker_s1_<occ>.pdf
 #   dp_cond_cov_four_levels_s1_<occ>.pdf
 # ============================================================
 

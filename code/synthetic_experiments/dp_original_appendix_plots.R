@@ -4,22 +4,20 @@ library(scales)
 library(ggh4x)
 
 # ============================================================
-# Appendix figures for the ORIGINAL CGTC method (no missing-mass
-# adjustment), regenerated in the revised layout used by the
-# CGTC+ main-paper figures (dp_mm_plugin_paper_plots.R):
-#   - the "Unseen Test Label Proportion" panel is dropped; the true
-#     unseen proportion appears instead as a dashed grey reference
-#     line inside the Joker Proportion panel;
-#   - the p-value comparison figure gains the same reference line.
+# Appendix figures for CGTC, i.e., our method without the
+# missing-mass adjustment, in the layout of the CGTC+ main-paper
+# figures (dp_mm_plugin_paper_plots.R): the true unseen proportion
+# appears as a dashed grey reference line inside the Joker Proportion
+# panel and in the p-value comparison figure.
 #   data: results_hpc/dp_tuned_mixed_labels/rebuttal/ (CV-selected beta),
 #   restricted to the adaptively tuned runs (tuning_method_flag == 0); the
-#   folder also holds fixed-alpha reruns (tune-1) which are excluded here.
-# Outputs (same filenames as before):
-#   dp_four_panel_90_joker_size.pdf   (now 3 panels)
-#   dp_pvalue_propjoker.pdf           (reference line added)
-#   dp_cond_cov_four_levels.pdf       (refreshed from the rebuttal data)
-#   dp_pvalue_full.pdf                (refreshed from the rebuttal data)
-#   dp_tuned_alphas.pdf               (refreshed from the rebuttal data)
+#   folder also holds fixed-alpha runs (tune-1) which are excluded here.
+# Outputs:
+#   dp_four_panel_90_joker_size.pdf   (3 panels)
+#   dp_pvalue_propjoker.pdf
+#   dp_cond_cov_four_levels.pdf
+#   dp_pvalue_full.pdf
+#   dp_tuned_alphas.pdf
 # ============================================================
 
 fig.dir <- "."
@@ -32,8 +30,8 @@ df_orig <- list.files("results_hpc/dp_tuned_mixed_labels/rebuttal/",
     dt[, which(!duplicated(names(dt))), with = FALSE]
   })
 
-# Keep only the adaptively tuned runs; the rebuttal folder also contains
-# fixed-alpha (tuning_method_flag == -1) reruns that must not be pooled in.
+# Keep only the adaptively tuned runs; the folder also contains
+# fixed-alpha (tuning_method_flag == -1) runs that must not be pooled in.
 df_orig <- df_orig %>%
   filter(tuning_method_flag == 0)
 

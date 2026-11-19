@@ -11,7 +11,7 @@ library(tidyverse)
 #                   (results_hpc/dp_tuned_mixed_labels/vary_calprop),
 #                   output figures/dp_coverage_boxplot_varyCalib.pdf
 #   mm:             CGTC+ sweep produced by synthetic_experiment_dp_mm_plugin.py
-#                   via submit_synthetic_experiment_dp_mm_plugin_vary_calprop.sh
+#                   with DP_MM_RESULTS_SUFFIX = "_vary_calprop"
 #                   (results_hpc/dp_tuned_mixed_labels_mm_plugin_vary_calprop),
 #                   output figures/dp_coverage_boxplot_varyCalib_mm.pdf
 # Both sweeps: theta = 1000, n_ref = 2000, LOF one-class classifier,
