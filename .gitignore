@@ -160,7 +160,7 @@ model/
 *.npz
 
 # Cluster files
-setup.sh
+*.sh
 logs/
 results/
 # PyCharm
