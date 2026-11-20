@@ -110,8 +110,8 @@ with_large <- function(path) {
 #                recalibration.
 #   "occ"      : Recal-OCC (LOF), Iso-OCC (LOF), Iso-OCC (OCSVM g=20).
 # Isolation forest and default-bandwidth OCSVM results are not plotted.
-#   "main_large": the "main" setting on the extended n_ref grid given in
-#                the README (results in the
+#   "main_large": the "main" setting on the extended n_ref grid, 8000 to
+#                30000 (results in the
 #                sibling folders results_hpc/<folder>_large/, log x axis):
 #                the methods should approach each other as the missing
 #                mass vanishes and the problem becomes closed-set. Plots
